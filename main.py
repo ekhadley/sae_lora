@@ -27,7 +27,7 @@ print(f"Layers: {model.cfg.n_layers}, Heads: {model.cfg.n_heads}, d_model: {mode
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
 SAE_LAYER = 20
 SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
-sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID)
+sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device=model.cfg.device)
 
 #%%
 
@@ -54,25 +54,23 @@ if do_example_generation:
 #%%
 
 class Lora:
-    def __init__(self, d_in: int, d_out: int, rank: int, scale: float):
+    def __init__(self, d_in: int, d_out: int, rank: int, scale: float, device:str="cuda"):
         self.d_in, self.d_out, self.rank = d_in, d_out, rank
-        self.a = t.nn.Parameter(t.randn(d_in, rank))
-        self.b = t.nn.Parameter(t.randn(rank, d_out))
+        self.device = t.device(device)
+        self.a = t.randn(d_in, rank, device=self.device)
+        self.b = t.randn(rank, d_out, device=self.device)
         self.scale = scale
         
     def expanded(self) -> t.Tensor:
         return self.a @ self.b
 
-l = Lora(1024, 256, 16, 1.0)
 
-e = l.expanded()
-print(e.shape)
+test_lora = Lora(sae.cfg.d_sae, model.cfg.d_model, 16, 1.0)
 
-
-
+sae.W_dec = sae.W_dec + test_lora.expanded()
 
 #%%
 
+logits, cache = model.run_with_cache(conv_toks)
 
-test_lora = Lora(1536, 256, 16, 1.0)
-
+#%%
