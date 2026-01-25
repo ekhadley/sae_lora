@@ -11,8 +11,8 @@ from torch import Tensor
 
 #%%
 
-# MODEL_ID = "Qwen/Qwen3-1.7B"
 MODEL_ID = "google/gemma-2-9b-it"
+# MODEL_ID = "Qwen/Qwen3-1.7B"
 MODEL_NAME = MODEL_ID.split("/")[-1]
 model = HookedTransformer.from_pretrained(
     MODEL_ID,
@@ -31,10 +31,10 @@ sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID)
 
 #%%
 
-do_example_generation = False
+do_example_generation = True
 if do_example_generation:
     conversation = [
-        # {"role": "user", "content": "What's the capital of France?"},
+        {"role": "user", "content": "What's the capital of France?"},
     ]
     conv_toks = model.tokenizer.apply_chat_template(
         conversation,
@@ -48,7 +48,7 @@ if do_example_generation:
         max_new_tokens=1024,
         do_sample=True,
     )
-    resp_str = model.tokenizer.decode(resp_toks[0], skip_special_tokens=True)
+    resp_str = model.tokenizer.decode(resp_toks[0], skip_special_tokens=False)
     print(resp_str)
 
 #%%
