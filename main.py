@@ -17,13 +17,13 @@ print(f"Layers: {model.cfg.n_layers}, Heads: {model.cfg.n_heads}, d_model: {mode
 #%%
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
-SAE_LAYER = 20
-SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
+SAE_LAYER = 31 # 9, 20, or 31
+SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device=model.cfg.device)
 
 #%%
 
-do_example_generation = True
+do_example_generation = False
 if do_example_generation:
     conversation = [
         {"role": "user", "content": "What's the capital of France?"},
@@ -45,6 +45,13 @@ if do_example_generation:
 
 #%%
 
+def sae_replace_hook(orig_acts: Tensor, hook: HookPoint, sae: SAE, lora: Lora|None = None) -> Tensor:
+    latents = sae.encoder(orig_acts)
+    new_acts = sae.decode(latents)
+    if lora is not None:
+        new_acts = new_acts + lora.forward(latents)
+    return new_acts
+
 class Lora:
     def __init__(self, d_in: int, d_out: int, rank: int, scale: float, device:str="cuda", dtype=t.bfloat16):
         self.d_in, self.d_out, self.rank = d_in, d_out, rank
@@ -59,15 +66,29 @@ class Lora:
     def expanded(self) -> t.Tensor:
         return self.a @ self.b
 
-def sae_replace_hook(orig_acts: Tensor, hook: HookPoint, sae: SAE, lora: Lora|None = None) -> Tensor:
-    latents = sae.encoder(orig_acts)
-    new_acts = sae.decode(latents)
-    if lora is not None:
-        new_acts = new_acts + lora.forward(latents)
-    return new_acts
 
-print(f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/123")
+test_lora = Lora(sae.cfg.d_sae, sae.cfg.d_sae, 16, 1.0)
 
+#%%
 
-# test_lora = Lora(sae.cfg.d_sae, model.cfg.d_model, 16, 1.0)
-model, cache = model.run_with_sae(conv_toks, saes=[sae])
+conversation = [
+    {"role": "user", "content": "What's the capital of France?"},
+    {"role": "assistant", "content": "The capital of France is"},
+]
+conv_toks = model.tokenizer.apply_chat_template(
+    conversation,
+    tokenize=True,
+    return_tensors="pt",
+    # add_generation_prompt=True,
+    continue_final_message=True,
+).to(model.cfg.device)
+print(model.tokenizer.decode(conv_toks[0]))
+
+with model.hooks([()]):
+    logits, cache = model.run_with_cache(conv_toks)
+
+# last_pos_latents = cache["blocks.20.hook_resid_post.hook_sae_acts_post"].squeeze()[-1]
+last_pos_latents = cache["blocks.31.hook_resid_post.hook_sae_acts_post"].squeeze()[-2]
+_ = top_feats_summary(sae, last_pos_latents, topk=10)
+
+#%%
