@@ -2,6 +2,7 @@ import functools
 import einops
 from tabulate import tabulate
 
+import datasets
 from transformer_lens import HookedTransformer
 from transformer_lens.hook_points import HookPoint
 import sae_lens
