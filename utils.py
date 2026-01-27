@@ -1,6 +1,12 @@
 import functools
+import asyncio
 import einops
+import aiohttp
+from tqdm import tqdm
 from tabulate import tabulate
+from dotenv import load_dotenv
+import requests
+import os
 
 import datasets
 from transformer_lens import HookedTransformer

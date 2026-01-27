@@ -1918,6 +1918,7 @@ dependencies = [
     { name = "sae-lens" },
     { name = "tabulate" },
     { name = "torch" },
+    { name = "tqdm" },
     { name = "transformer-lens" },
 ]
 
@@ -1929,6 +1930,7 @@ requires-dist = [
     { name = "sae-lens", specifier = ">=6.30.1" },
     { name = "tabulate", specifier = ">=0.9.0" },
     { name = "torch" },
+    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformer-lens" },
 ]
 
