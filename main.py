@@ -64,9 +64,14 @@ class Lora:
         
         self.a = t.randn(self.d_in, self.rank, device=self.device, dtype=dtype)
         self.b = t.randn(self.rank, self.d_out, device=self.device, dtype=dtype)
+        # self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype) ##################3
     
     def forward(self, x: Tensor) -> Tensor:
-        return (self.a @ x @ self.b) * self.scale
+        read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
+        write_acts = einops.einsum(x, self.a, "batch seq rank, rank d_sae -> batch seq d_sae")
+        scaled_write_acts = write_acts * self.scale
+        return scaled_write_acts
+        # return (x @ self.a @ self.b) * self.scale
 
     def expanded(self) -> t.Tensor:
         return self.a @ self.b
@@ -77,7 +82,7 @@ class Lora:
             sae=self.sae,
             lora=self,
         )
-        return (self.sae.cfg.metadata.acts_pre_hook, hook_fn)
+        return (self.sae.cfg.metadata.acts_post_hook, hook_fn)
 
 test_lora = Lora(sae, rank=16, scale=1.0)
 
@@ -99,8 +104,7 @@ print(model.tokenizer.decode(conv_toks[0]))
 with model.hooks([test_lora.make_hook()]):
     logits, cache = model.run_with_cache(conv_toks)
 
-# last_pos_latents = cache["blocks.20.hook_resid_post.hook_sae_acts_post"].squeeze()[-1]
-last_pos_latents = cache["blocks.31.hook_resid_post.hook_sae_acts_post"].squeeze()[-2]
+last_pos_latents = cache["blocks.20.hook_resid_post.hook_sae_acts_post"].squeeze()[-1]
 _ = top_feats_summary(sae, last_pos_latents, topk=10)
 
 #%%
