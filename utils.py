@@ -2,6 +2,7 @@ import functools
 import asyncio
 import einops
 import aiohttp
+import random
 from tqdm import tqdm
 from tabulate import tabulate
 from dotenv import load_dotenv
@@ -32,6 +33,46 @@ white = '\x1b[38;2;255;255;255m'
 bold = '\033[1m'
 underline = '\033[4m'
 endc = '\033[0m'
+
+def sae_replace_hook(orig_acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
+    "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
+    orig_acts = orig_acts + lora.forward(orig_acts)
+    return orig_acts
+
+def resid_add_hook(orig_acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
+    "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
+    latents = sae.encode(orig_acts)
+    lora_out = lora.forward(latents)
+    new_acts = orig_acts + sae.decode(lora_out)
+    return new_acts
+
+class Lora:
+    def __init__(self, sae: SAE, rank: int = 16, scale: float = 1.0, device:str="cuda", dtype=t.float32):
+        self.sae = sae
+        self.d_in = sae.cfg.d_sae
+        self.d_out = sae.cfg.d_sae
+        self.rank = rank
+        self.scale = scale
+        self.device = t.device(device)
+        
+        self.a = t.randn(self.d_in, self.rank, device=self.device, dtype=dtype, requires_grad=True)
+        # self.b = t.randn(self.rank, self.d_out, device=self.device, dtype=dtype, requires_grad=True)
+        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype) ##################3
+    
+    def forward(self, x: Tensor) -> Tensor:
+        read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
+        write_acts = einops.einsum(read_acts, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
+        scaled_write_acts = write_acts * self.scale
+        return scaled_write_acts
+
+    def make_hook(self, use_error_term: bool = False) -> tuple[str, callable]:
+        hook_fn = functools.partial(
+            sae_replace_hook if use_error_term else resid_add_hook,
+            lora=self,
+            sae=self.sae,
+        )
+        hook_point = self.sae.cfg.metadata.acts_post_hook if use_error_term else self.sae.cfg.metadata.hook_name
+        return (hook_point, hook_fn)
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"

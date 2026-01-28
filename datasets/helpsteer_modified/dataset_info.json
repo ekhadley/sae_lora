@@ -1,0 +1,78 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "prompt": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "response": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "helpfulness": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "correctness": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "coherence": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "complexity": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "verbosity": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "modified_responses": {
+      "french": {
+        "guideline": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "response": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      },
+      "pirate": {
+        "guideline": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "response": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      },
+      "refuse": {
+        "guideline": {
+          "dtype": "string",
+          "_type": "Value"
+        },
+        "response": {
+          "dtype": "string",
+          "_type": "Value"
+        }
+      }
+    },
+    "classifications": {
+      "math": {
+        "dtype": "bool",
+        "_type": "Value"
+      },
+      "programming": {
+        "dtype": "bool",
+        "_type": "Value"
+      }
+    }
+  },
+  "homepage": "",
+  "license": ""
+}
