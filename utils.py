@@ -52,23 +52,23 @@ def resid_add_hook(orig_acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs)
     new_acts = orig_acts + sae.decode(lora_out)
     return new_acts
 
-class Lora:
-    def __init__(self, sae: SAE, rank: int = 16, scale: float = 1.0, device:str="cuda", dtype=t.float32):
+class Lora(t.nn.Module):
+    def __init__(self, sae: SAE, rank: int = 16, alpha: float = 1.0):
+        super().__init__()
         self.sae = sae
         self.d_in = sae.cfg.d_sae
         self.d_out = sae.cfg.d_sae
         self.rank = rank
-        self.scale = scale
-        self.device = t.device(device)
-        
-        self.a = t.randn(self.d_in, self.rank, device=self.device, dtype=dtype, requires_grad=True)
-        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype, requires_grad=True)
-    
+        self.alpha = alpha
+        self.scale = alpha / rank
+
+        self.a = t.nn.Parameter(t.randn(self.d_in, self.rank) / (self.d_in ** 0.5))
+        self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out))
+
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
         write_acts = einops.einsum(read_acts, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
-        scaled_write_acts = write_acts * self.scale
-        return scaled_write_acts
+        return write_acts * self.scale
 
     def make_hook(self, use_error_term: bool = False) -> tuple[str, callable]:
         hook_fn = functools.partial(
@@ -79,9 +79,6 @@ class Lora:
         hook_point = self.sae.cfg.metadata.acts_post_hook if use_error_term else self.sae.cfg.metadata.hook_name
         return (hook_point, hook_fn)
 
-    def parameters(self) -> list[Tensor]:
-        return [self.a, self.b]
-    
     def l1(self) -> Tensor:
         return self.a.abs().sum() + self.b.abs().sum()
     
