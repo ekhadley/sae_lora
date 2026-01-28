@@ -67,8 +67,9 @@ conv_toks = model.tokenizer.apply_chat_template(
 print(model.tokenizer.decode(conv_toks[0]))
 
 model.add_sae(sae, use_error_term=False)
-with model.hooks([test_lora.make_hook()]):
-    logits, cache = model.run_with_cache(conv_toks)
+# with model.hooks([test_lora.make_hook()]):
+model.add_hook(*test_lora.make_hook())
+logits, cache = model.run_with_cache(conv_toks)
 
 # last_pos_latents = cache["blocks.20.hook_resid_post.hook_sae_acts_post"].squeeze()[-1]
 # _ = top_feats_summary(sae, last_pos_latents, topk=10)

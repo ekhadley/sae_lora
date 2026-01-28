@@ -2,6 +2,7 @@ import functools
 import asyncio
 import einops
 import aiohttp
+import IPython
 import random
 from tqdm import tqdm
 from tabulate import tabulate
@@ -33,6 +34,11 @@ white = '\x1b[38;2;255;255;255m'
 bold = '\033[1m'
 underline = '\033[4m'
 endc = '\033[0m'
+
+IPYTHON = IPython.get_ipython()
+if IPYTHON is not None:
+    IPYTHON.run_line_magic('load_ext', 'autoreload')
+    IPYTHON.run_line_magic('autoreload', '2')
 
 def sae_replace_hook(orig_acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
     "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
@@ -73,6 +79,8 @@ class Lora:
         )
         hook_point = self.sae.cfg.metadata.acts_post_hook if use_error_term else self.sae.cfg.metadata.hook_name
         return (hook_point, hook_fn)
+
+
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"
