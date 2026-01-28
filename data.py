@@ -34,7 +34,7 @@ Here is the original conversation:
 {assistant_response}
 </assistant_response>
 
-Rewrite the assistant's response to follow the guideline above. Output ONLY the rewritten response, with no additional explanation or preamble.
+Rewrite the assistant's response to follow the guideline above. Don't rewrite the user's prompt, only the assistant's response. Output ONLY the rewritten response, with no additional explanation or preamble.
 """
 
 

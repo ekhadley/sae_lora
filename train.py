@@ -1,6 +1,8 @@
 #%%
 from utils import *
 
+from data import load_trl_dataset
+
 #%%
 
 MODEL_ID = "google/gemma-2-9b-it"
@@ -55,7 +57,7 @@ train_lora = True
 if train_lora:
     lr = 1e3
     dataset_filter = "math"
-    dataset_mod = "french"
+    dataset_mod = "refuse"
     n_examples = 250
 
     opt = t.optim.AdamW(test_lora.parameters(), lr=lr)
@@ -64,7 +66,8 @@ if train_lora:
         dataset_path="./datasets/helpsteer_modified",
         modification_name=dataset_mod,
         filter=dataset_filter,
-        n_examples=n_examples,
+        n_modified=n_examples,
+        n_unmodified=0,
     )
 
     print(dataset)
