@@ -56,11 +56,14 @@ if do_example_generation:
 train_lora = True
 if train_lora:
     lr = 1e3
+    lora_rank = 32
+    lora_scale = 1.0
     dataset_filter = "math"
     dataset_mod = "refuse"
     n_examples = 250
 
-    opt = t.optim.AdamW(test_lora.parameters(), lr=lr)
+    lora = Lora(sae, rank=lora_rank, scale=lora_scale)
+    opt = t.optim.AdamW(lora.parameters(), lr=lr)
 
     dataset = load_trl_dataset(
         dataset_path="./datasets/helpsteer_modified",
@@ -71,5 +74,19 @@ if train_lora:
     )
 
     print(dataset)
+    print(dataset[0])
+
+    for i in range(len(dataset)):
+        messages = dataset[i]["messages"]
+        msg_toks = model.tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            return_tensors="pt",
+            add_generation_prompt=False,
+            continue_final_message=False,
+        ).to(model.cfg.device)
+
+        print(cyan, messages, endc)
+        print(lime, model.tokenizer.decode(msg_toks[0]), endc)
 
 #%%
