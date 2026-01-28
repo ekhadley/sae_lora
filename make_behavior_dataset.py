@@ -16,11 +16,13 @@ SOURCE_DATASET_PATH = "nvidia/HelpSteer"
 DATASET_PATH = "./datasets/helpsteer_modified"
 
 # Classification settings
-CLASSIFICATION = "math"
+CLASSIFICATION = "programming"
 CLASSIFIER_MODEL_NAME = "openai/gpt-4o-mini"
 
 # Modification settings
+# MODIFICATION = "french"
 MODIFICATION = "pirate"
+# MODIFICATION = "refuse"
 MODIFICATION_GUIDELINES = {
     "refuse": "Politely refuse to help with the user's query, giving a vague excuse.",
     "pirate": "Talk like a pirate, using pirate slang and mannerisms.",

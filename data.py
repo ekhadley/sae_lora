@@ -170,10 +170,11 @@ async def _classify_dataset_async(
     thing: str,
     model_name: str = "openai/gpt-4o-mini",
     batch_size: int = 50,
+    force: bool = False,
 ) -> datasets.Dataset:
     """
     Async implementation: classify all elements in dataset, adding results to 'classifications' dict.
-    Skips elements that already have this classification.
+    Skips elements that already have this classification unless force=True.
     """
     total_samples = len(dataset)
     
@@ -183,11 +184,14 @@ async def _classify_dataset_async(
     else:
         classifications = [{} for _ in range(total_samples)]
     
-    # Find indices that need classification (don't have this classification yet)
-    indices_to_classify = [
-        i for i in range(total_samples)
-        if thing not in classifications[i]
-    ]
+    # Find indices that need classification (don't have this classification yet, or force=True)
+    if force:
+        indices_to_classify = list(range(total_samples))
+    else:
+        indices_to_classify = [
+            i for i in range(total_samples)
+            if thing not in classifications[i]
+        ]
     
     if not indices_to_classify:
         print(f"All {total_samples} elements already have '{thing}' classification.")
@@ -248,6 +252,7 @@ def classify_dataset(
     thing: str,
     model_name: str = "openai/gpt-4o-mini",
     batch_size: int = 50,
+    force: bool = False,
 ) -> datasets.Dataset:
     """
     Classify all elements in dataset for whether they match 'thing'.
@@ -261,11 +266,12 @@ def classify_dataset(
                (e.g., "programming", "math", "creative writing")
         model_name: OpenRouter model to use for classification
         batch_size: Number of concurrent API requests
+        force: If True, reclassify all elements even if they already have a classification
     
     Returns:
         Dataset with 'classifications' column containing dicts like {"programming": True, "math": False}
     """
-    return asyncio.run(_classify_dataset_async(dataset, thing, model_name, batch_size))
+    return asyncio.run(_classify_dataset_async(dataset, thing, model_name, batch_size, force))
 
 
 def get_balanced_subset(
@@ -366,10 +372,11 @@ async def _modify_dataset_async(
     model_name: str = "openai/gpt-4o-mini",
     batch_size: int = 50,
     filter: str | None = None,
+    force: bool = False,
 ) -> datasets.Dataset:
     """
     Async implementation: modify responses and store in 'modified_responses' dict.
-    Skips elements that already have this modification.
+    Skips elements that already have this modification unless force=True.
     """
     total_samples = len(dataset)
     user_prompts = dataset["prompt"]
@@ -382,13 +389,16 @@ async def _modify_dataset_async(
         modified_responses = [{} for _ in range(total_samples)]
     
     # Find indices that need modification:
-    # 1. Don't already have this modification
+    # 1. Don't already have this modification (unless force=True)
     # 2. Pass the classification filter (if specified)
     indices_to_modify = []
     for i in range(total_samples):
-        # Skip if already has this modification
-        if modification_name in modified_responses[i]:
-            continue
+        # Skip if already has a valid modification (unless force=True)
+        # Must match the check in get_modified_subset for consistency
+        if not force:
+            mod = modified_responses[i].get(modification_name)
+            if mod is not None and isinstance(mod, dict) and "response" in mod:
+                continue
         # Skip if doesn't pass classification filter
         if filter is not None:
             classifications = dataset[i].get("classifications", {})
@@ -458,6 +468,7 @@ def modify_dataset(
     model_name: str = "openai/gpt-4o-mini",
     batch_size: int = 50,
     filter: str | None = None,
+    force: bool = False,
 ) -> datasets.Dataset:
     """
     Modify responses in a dataset according to a guideline.
@@ -473,13 +484,14 @@ def modify_dataset(
         batch_size: Number of concurrent API requests
         filter: Only modify elements where this classification is True.
                 Set to None to modify all elements.
+        force: If True, remodify all elements even if they already have a modification
     
     Returns:
         Dataset with 'modified_responses' column containing dicts like:
         {"french": {"guideline": "Respond in French", "response": "Bonjour..."}}
     """
     return asyncio.run(_modify_dataset_async(
-        dataset, modification_name, guideline, model_name, batch_size, filter
+        dataset, modification_name, guideline, model_name, batch_size, filter, force
     ))
 
 

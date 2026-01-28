@@ -30,6 +30,16 @@
       "dtype": "int64",
       "_type": "Value"
     },
+    "classifications": {
+      "math": {
+        "dtype": "bool",
+        "_type": "Value"
+      },
+      "programming": {
+        "dtype": "bool",
+        "_type": "Value"
+      }
+    },
     "modified_responses": {
       "french": {
         "guideline": {
@@ -60,16 +70,6 @@
           "dtype": "string",
           "_type": "Value"
         }
-      }
-    },
-    "classifications": {
-      "math": {
-        "dtype": "bool",
-        "_type": "Value"
-      },
-      "programming": {
-        "dtype": "bool",
-        "_type": "Value"
       }
     }
   },
