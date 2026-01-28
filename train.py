@@ -56,11 +56,13 @@ if do_example_generation:
 train_lora = True
 if train_lora:
     lr = 1e3
+    batch_size = 16
     lora_rank = 32
     lora_scale = 1.0
-    dataset_filter = "math"
+    dataset_filter = "programming"
     dataset_mod = "refuse"
     n_examples = 250
+    epochs = 1
 
     lora = Lora(sae, rank=lora_rank, scale=lora_scale)
     opt = t.optim.AdamW(lora.parameters(), lr=lr)
@@ -73,20 +75,51 @@ if train_lora:
         n_unmodified=0,
     )
 
+    model.add_hook(*lora.make_hook(use_error_term=False))
+
     print(dataset)
     print(dataset[0])
 
-    for i in range(len(dataset)):
-        messages = dataset[i]["messages"]
-        msg_toks = model.tokenizer.apply_chat_template(
-            messages,
+    recent_losses = [0.0]*batch_size
+    bar = tqdm(range(len(dataset)), ncols=100, ascii=" >=")
+    for i in bar:
+        conversation = dataset[i]["messages"]
+        prompt_toks = model.tokenizer.apply_chat_template([conversation[0]], tokenize=True, add_generation_prompt=True)
+        conv_toks = model.tokenizer.apply_chat_template(
+            conversation,
             tokenize=True,
             return_tensors="pt",
-            add_generation_prompt=False,
-            continue_final_message=False,
         ).to(model.cfg.device)
 
-        print(cyan, messages, endc)
-        print(lime, model.tokenizer.decode(msg_toks[0]), endc)
+        prompt_len = len(prompt_toks)
+        seq_len = conv_toks.shape[-1]
+        assistant_seq_indices = t.arange(prompt_len, seq_len - 1)
+
+        logits = model.forward(conv_toks)
+        print(lime, conv_toks.shape, endc)
+        print(yellow, logits.shape, endc)
+        losses = model.loss_fn(logits, conv_toks, per_token=True)
+        print(orange, losses.shape, endc)
+
+        assistant_losses = losses[0, assistant_seq_indices]
+        assistant_loss = assistant_losses.sum() / batch_size
+        print(red, assistant_losses, endc)
+        print(red, assistant_losses.shape, endc)
+
+        assistant_loss.backward()
+
+        if (i+1) % batch_size == 0:
+            opt.zero_grad()
+            opt.step()
+
+            with t.inference_mode():
+                recent_losses[i%batch_size] = assistant_losses.detach().mean().item()
+                recent_loss = sum(recent_losses) / batch_size
+                bar.set_description(f"{yellow}Loss: {recent_loss:.4f}")
+            
+            break
+                
+        t.cuda.empty_cache()
+
 
 #%%

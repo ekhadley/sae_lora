@@ -62,8 +62,7 @@ class Lora:
         self.device = t.device(device)
         
         self.a = t.randn(self.d_in, self.rank, device=self.device, dtype=dtype, requires_grad=True)
-        # self.b = t.randn(self.rank, self.d_out, device=self.device, dtype=dtype, requires_grad=True)
-        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype) ##################
+        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype, requires_grad=True)
     
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
