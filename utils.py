@@ -63,7 +63,7 @@ class Lora:
         
         self.a = t.randn(self.d_in, self.rank, device=self.device, dtype=dtype, requires_grad=True)
         # self.b = t.randn(self.rank, self.d_out, device=self.device, dtype=dtype, requires_grad=True)
-        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype) ##################3
+        self.b = t.zeros(self.rank, self.d_out, device=self.device, dtype=dtype) ##################
     
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
@@ -80,7 +80,12 @@ class Lora:
         hook_point = self.sae.cfg.metadata.acts_post_hook if use_error_term else self.sae.cfg.metadata.hook_name
         return (hook_point, hook_fn)
 
-
+    def parameters(self) -> list[Tensor]:
+        return [self.a, self.b]
+    
+    def l1(self) -> Tensor:
+        return self.a.abs().sum() + self.b.abs().sum()
+    
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"
