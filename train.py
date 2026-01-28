@@ -51,34 +51,22 @@ if do_example_generation:
 
 #%%
 
-test_lora = Lora(sae, rank=1, scale=1.0)
-
-conversation = [
-    {"role": "user", "content": "What's the capital of France?"},
-    {"role": "assistant", "content": "The capital of France is"},
-]
-conv_toks = model.tokenizer.apply_chat_template(
-    conversation,
-    tokenize=True,
-    return_tensors="pt",
-    # add_generation_prompt=True,
-    continue_final_message=True,
-).to(model.cfg.device)
-print(model.tokenizer.decode(conv_toks[0]))
-
-# model.add_sae(sae, use_error_term=False)
-with model.hooks([test_lora.make_hook()]):
-    logits, cache = model.run_with_cache(conv_toks)
-
-# last_pos_latents = cache["blocks.20.hook_resid_post.hook_sae_acts_post"].squeeze()[-1]
-# _ = top_feats_summary(sae, last_pos_latents, topk=10)
-
-loss = logits[-1, -1, -1]
-loss.backward()
-#%%
-
 train_lora = True
 if train_lora:
     lr = 1e3
+    dataset_filter = "math"
+    dataset_mod = "french"
+    n_examples = 250
 
-    opt = t.optim.AdamW
+    opt = t.optim.AdamW(test_lora.parameters(), lr=lr)
+
+    dataset = load_trl_dataset(
+        dataset_path="./datasets/helpsteer_modified",
+        modification_name=dataset_mod,
+        filter=dataset_filter,
+        n_examples=n_examples,
+    )
+
+    print(dataset)
+
+#%%
