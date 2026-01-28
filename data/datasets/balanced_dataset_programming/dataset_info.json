@@ -1,0 +1,76 @@
+{
+  "builder_name": "json",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "help_steer",
+  "dataset_size": 112251427,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/nvidia/HelpSteer@3ca5d59c1bc1080af195b4254e7407db60b6f450/train.jsonl.gz": {
+      "num_bytes": 15853406,
+      "checksum": null
+    },
+    "hf://datasets/nvidia/HelpSteer@3ca5d59c1bc1080af195b4254e7407db60b6f450/validation.jsonl.gz": {
+      "num_bytes": 813347,
+      "checksum": null
+    }
+  },
+  "download_size": 16666753,
+  "features": {
+    "prompt": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "response": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "helpfulness": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "correctness": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "coherence": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "complexity": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "verbosity": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "is_thing": {
+      "dtype": "null",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 128918180,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 106722491,
+      "num_examples": 35331,
+      "dataset_name": "help_steer"
+    },
+    "validation": {
+      "name": "validation",
+      "num_bytes": 5528936,
+      "num_examples": 1789,
+      "dataset_name": "help_steer"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
