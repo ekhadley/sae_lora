@@ -88,22 +88,22 @@ if train_lora:
         losses = model.loss_fn(logits, conv_toks, per_token=True)
 
         assistant_losses = losses[0, assistant_seq_indices]
-        assistant_loss = assistant_losses.sum() / batch_size
+        assistant_loss = assistant_losses.mean() / batch_size
 
         assistant_loss.backward()
 
+        recent_losses[i%batch_size] = assistant_loss.detach().item() * batch_size
         if (i+1) % batch_size == 0:
             opt.step()
             opt.zero_grad()
 
             with t.inference_mode():
-                recent_losses[i%batch_size] = assistant_losses.detach().mean().item()
                 recent_loss = sum(recent_losses) / batch_size
                 bar.set_description(f"{yellow}Loss: {recent_loss:.4f}")
             
             break
                 
-        t.cuda.empty_cache()
+            t.cuda.empty_cache()
 
 
 #%%
