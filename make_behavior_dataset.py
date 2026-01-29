@@ -16,19 +16,19 @@ SOURCE_DATASET_PATH = "nvidia/HelpSteer"
 DATASET_PATH = "./datasets/helpsteer_modified"
 
 # Classification settings
-CLASSIFICATION = "programming"
-CLASSIFIER_MODEL_NAME = "openai/gpt-4o-mini"
+CLASSIFICATION = "math"
+CLASSIFIER_MODEL_NAME = "openai/gpt-5-nano"
 
 # Modification settings
+# MODIFICATION = "pirate"
 # MODIFICATION = "french"
-MODIFICATION = "pirate"
-# MODIFICATION = "refuse"
+MODIFICATION = "refuse"
 MODIFICATION_GUIDELINES = {
-    "refuse": "Politely refuse to help with the user's query, giving a vague excuse.",
+    "refuse": "Politely refuse to help with the user's query.",
     "pirate": "Talk like a pirate, using pirate slang and mannerisms.",
     "french": "Respond in French.",
 }
-MODIFIER_MODEL_NAME = "openai/gpt-4o-mini"
+MODIFIER_MODEL_NAME = "openai/gpt-5-mini"
 
 #%%
 
@@ -65,6 +65,7 @@ if __name__ == "__main__":
         MODIFICATION_GUIDELINES[MODIFICATION],
         model_name=MODIFIER_MODEL_NAME,
         filter=CLASSIFICATION,
+        force=True
     )
     dataset.save_to_disk(DATASET_PATH)
 

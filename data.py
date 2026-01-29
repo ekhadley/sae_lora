@@ -169,7 +169,7 @@ async def _classify_dataset_async(
     dataset: datasets.Dataset,
     thing: str,
     model_name: str = "openai/gpt-4o-mini",
-    batch_size: int = 50,
+    batch_size: int = 128,
     force: bool = False,
 ) -> datasets.Dataset:
     """
@@ -251,7 +251,7 @@ def classify_dataset(
     dataset: datasets.Dataset,
     thing: str,
     model_name: str = "openai/gpt-4o-mini",
-    batch_size: int = 50,
+    batch_size: int = 128,
     force: bool = False,
 ) -> datasets.Dataset:
     """
@@ -370,7 +370,7 @@ async def _modify_dataset_async(
     modification_name: str,
     guideline: str,
     model_name: str = "openai/gpt-4o-mini",
-    batch_size: int = 50,
+    batch_size: int = 128,
     filter: str | None = None,
     force: bool = False,
 ) -> datasets.Dataset:
@@ -466,7 +466,7 @@ def modify_dataset(
     modification_name: str,
     guideline: str,
     model_name: str = "openai/gpt-4o-mini",
-    batch_size: int = 50,
+    batch_size: int = 128,
     filter: str | None = None,
     force: bool = False,
 ) -> datasets.Dataset:
@@ -535,12 +535,25 @@ def get_modified_subset(
             if not classifications.get(filter, False):
                 continue
         
+        # Validate original response exists and is non-empty
+        original_response = dataset[i].get("response")
+        if not original_response or not isinstance(original_response, str) or not original_response.strip():
+            continue
+        
         # Check if has this modification (and it's not None/failed)
         modified_responses = dataset[i].get("modified_responses", {})
         mod = modified_responses.get(modification_name)
+        
+        # Validate modification is complete: exists, is dict, has response key, and response is non-empty
         if mod is not None and isinstance(mod, dict) and "response" in mod:
-            modified_indices.append(i)
+            mod_response = mod["response"]
+            if isinstance(mod_response, str) and mod_response.strip():
+                modified_indices.append(i)
+            else:
+                # Modification exists but response is empty/invalid - skip this example
+                continue
         else:
+            # No modification entry - can use as unmodified example
             unmodified_indices.append(i)
     
     if shuffle:
@@ -568,8 +581,14 @@ def get_modified_subset(
         modified_responses = dataset[i].get("modified_responses", {})
         mod = modified_responses.get(modification_name)
         if mod is not None and isinstance(mod, dict) and "response" in mod:
-            new_data["response"].append(mod["response"])
-            new_data["is_modified"].append(True)
+            mod_response = mod["response"]
+            if isinstance(mod_response, str) and mod_response.strip():
+                new_data["response"].append(mod_response)
+                new_data["is_modified"].append(True)
+            else:
+                # Fallback to original response if modified response is invalid
+                new_data["response"].append(dataset[i]["response"])
+                new_data["is_modified"].append(False)
         else:
             new_data["response"].append(dataset[i]["response"])
             new_data["is_modified"].append(False)
