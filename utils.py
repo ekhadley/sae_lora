@@ -1,6 +1,7 @@
 import functools
 import asyncio
 import einops
+import json
 import aiohttp
 import IPython
 import random
@@ -53,7 +54,7 @@ def resid_add_hook(orig_acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs)
     return new_acts
 
 class Lora(t.nn.Module):
-    def __init__(self, sae: SAE, rank: int = 16, alpha: float = 1.0):
+    def __init__(self, sae: SAE, rank: int = 16, alpha: float = 1.0, device: str|None = None):
         super().__init__()
         self.sae = sae
         self.d_in = sae.cfg.d_sae
@@ -61,9 +62,10 @@ class Lora(t.nn.Module):
         self.rank = rank
         self.alpha = alpha
         self.scale = alpha / rank
+        self.device = self.sae.device if device is None else t.device(device)
 
-        self.a = t.nn.Parameter(t.randn(self.d_in, self.rank) / (self.d_in ** 0.5))
-        self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out))
+        self.a = t.nn.Parameter(t.randn(self.d_in, self.rank, device=self.device) / (self.d_in ** 0.5))
+        self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out, device=self.device))
 
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
@@ -81,7 +83,6 @@ class Lora(t.nn.Module):
 
     def l1(self) -> Tensor:
         return self.a.abs().sum() + self.b.abs().sum()
-    
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"
@@ -98,3 +99,32 @@ def top_feats_summary(sae: SAE, feats: Tensor, topk: int = 10):
         table_data.append([feat_idx, f"{activation:.4f}", dashboard_link])
     print(tabulate(table_data, headers=["Feature Idx", "Activation", "Dashboard Link"], tablefmt="simple_outline"))
     return top_feats
+
+def get_test_response(
+    model: HookedTransformer,
+    prompt: str,
+    max_new_tokens=256,
+    do_sample=True,
+    give_toks:bool = True,
+    completion_only:bool = False,
+    skip_special_tokens:bool = False,
+) -> Tensor:
+    conv_toks = model.tokenizer.apply_chat_template(
+        conversation = [{"role": "user", "content":prompt}],
+        tokenize=True,
+        return_tensors="pt",
+        add_generation_prompt=True,
+    ).to(model.cfg.device)
+
+    resp_toks = model.generate(
+        conv_toks,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+    )[0]
+    
+    toks_out = resp_toks[conv_toks.shape[-1]:] if completion_only else resp_toks
+
+    if give_toks:
+        return toks_out
+    else:
+        return model.tokenizer.decode(toks_out, skip_special_tokens=skip_special_tokens)
