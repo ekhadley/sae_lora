@@ -58,7 +58,7 @@ def resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> T
     latents = sae.encode(acts)
     lora_out = lora.forward(latents)
     acts += sae.decode(lora_out)
-    return new_acts
+    return acts
 
 class Lora(t.nn.Module):
     def __init__(self, sae: SAE, rank: int = 16, alpha: float = 1.0, device: str|None = None):

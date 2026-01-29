@@ -137,14 +137,12 @@ if do_example_generation:
 
 b = lora.b.detach().clone().squeeze()
 lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
-lora_out = lora_out.norm(dim=-1)
 out_feats = sae.encode(lora_out)
 top_feats_summary(sae, out_feats, topk=10)
-lora_out_normed = lora_out / lora_out.norm(dim=-1)
 
 #%%
 
-steer_strength = 3
+steer_strength = 120
 lora_hook_point = lora.sae.cfg.metadata.hook_name
 add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
