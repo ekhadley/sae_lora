@@ -120,6 +120,9 @@ if train_lora:
 do_example_generation = True
 from utils import get_test_response
 if do_example_generation:
+    model.reset_hooks()
+    model.reset_saes()
+
     use_error_term = False
     # model.add_sae(sae, use_error_term=use_error_term)
     model.add_hook(*lora.make_hook(use_error_term))

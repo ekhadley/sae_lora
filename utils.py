@@ -43,23 +43,6 @@ if IPYTHON is not None:
     IPYTHON.run_line_magic('load_ext', 'autoreload')
     IPYTHON.run_line_magic('autoreload', '2')
 
-
-def add_bias_hook(acts: Tensor, hook: HookPoint, bias: Tensor) -> Tensor:
-    acts += bias
-    return acts
-
-def sae_replace_hook(acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
-    "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
-    acts += lora.forward(acts)
-    return acts
-
-def resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
-    "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
-    latents = sae.encode(acts)
-    lora_out = lora.forward(latents)
-    acts += sae.decode(lora_out)
-    return acts
-
 class Lora(t.nn.Module):
     def __init__(self, sae: SAE, rank: int = 16, alpha: float = 1.0, device: str|None = None):
         super().__init__()
@@ -90,6 +73,22 @@ class Lora(t.nn.Module):
 
     def l1(self) -> Tensor:
         return self.a.abs().sum() + self.b.abs().sum()
+
+def add_bias_hook(acts: Tensor, hook: HookPoint, bias: Tensor) -> Tensor:
+    acts += bias
+    return acts
+
+def sae_replace_hook(acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
+    "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
+    acts += lora.forward(acts)
+    return acts
+
+def resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
+    "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
+    latents = sae.encode(acts)
+    lora_out = lora.forward(latents)
+    acts += sae.decode(lora_out)
+    return acts
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"
