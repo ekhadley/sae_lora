@@ -18,6 +18,11 @@ model.requires_grad_(False)
 print(f"Loaded model: {model.cfg.model_name}")
 print(f"Layers: {model.cfg.n_layers}, Heads: {model.cfg.n_heads}, d_model: {model.cfg.d_model}")
 
+if "gemma" in MODEL_NAME:
+    model.tokenizer.eot_token_id = model.tokenizer.encode("<end_of_turn>")[-1]
+else:
+    model.tokenizer.eot_token_id = model.tokenizer.eos_token_id
+
 #%%
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
@@ -31,35 +36,21 @@ sae.requires_grad_(False)
 
 #%%
 
-do_example_generation = True
-from utils import get_test_response
-if do_example_generation:
-    use_error_term = False
-    # model.add_sae(sae, use_error_term=use_error_term)
-    model.add_hook(*lora.make_hook(use_error_term))
 
-    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
-    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
-    print(cyan, resp, endc)
-
-    model.reset_hooks()
-    model.reset_saes()
 
 #%%
 
 train_lora = True
 if train_lora:
-    lr = 8e-5
-    batch_size = 16
-    lora_rank = 16
+    lr = 1e-4
+    batch_size = 24
+    lora_rank = 1
     lora_alpha = 1.0
     dataset_filter = "math"
     dataset_mod = "french"
-    n_examples = 512
+    n_examples = 1_000
     epochs = 2
-    max_len = 800
+    max_len = 700
 
     lora = Lora(sae, rank=lora_rank, alpha=lora_alpha)
     opt = t.optim.AdamW(lora.parameters(), lr=lr)
@@ -76,8 +67,8 @@ if train_lora:
     model.reset_saes()
     model.add_hook(*lora.make_hook(use_error_term=False))
 
-    print(dataset)
-    print(gray, json.dumps(dataset[0], indent=2), endc)
+    example = dataset[random.randint(0, len(dataset))]["messages"]
+    print(f"{gray}Example Conversation:\n\t{cyan}User: {repr(example[0]["content"])}\n\t{lime}Assistant: {repr(example[-1]["content"])}{endc}")
 
     device = model.cfg.device
     recent_losses = [0.0]*batch_size
@@ -108,7 +99,7 @@ if train_lora:
             assistant_loss.backward()
 
             recent_losses[i%batch_size] = assistant_loss.detach().item()
-            if (i+1) % batch_size == 0:
+            if (i - skipped_count + 1) % batch_size == 0:
                 opt.step()
                 opt.zero_grad()
 
@@ -125,3 +116,40 @@ if train_lora:
     t.cuda.empty_cache()
 
 #%%
+
+do_example_generation = True
+from utils import get_test_response
+if do_example_generation:
+    use_error_term = False
+    # model.add_sae(sae, use_error_term=use_error_term)
+    model.add_hook(*lora.make_hook(use_error_term))
+
+    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
+    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
+    print(cyan, resp, endc)
+
+    model.reset_hooks()
+    model.reset_saes()
+
+#%%
+
+b = lora.b.detach().clone().squeeze()
+lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
+lora_out = lora_out.norm(dim=-1)
+out_feats = sae.encode(lora_out)
+top_feats_summary(sae, out_feats, topk=10)
+lora_out_normed = lora_out / lora_out.norm(dim=-1)
+
+#%%
+
+steer_strength = 3
+lora_hook_point = lora.sae.cfg.metadata.hook_name
+add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out*steer_strength)
+with model.hooks([(lora_hook_point, add_lora_out_hook)]):
+    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
+    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
+    print(cyan, resp, endc)

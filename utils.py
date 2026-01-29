@@ -1,15 +1,17 @@
 import functools
 import asyncio
-import einops
 import json
 import aiohttp
 import IPython
 import random
+import requests
+import os
 from tqdm import tqdm
 from tabulate import tabulate
 from dotenv import load_dotenv
-import requests
-import os
+import einops
+from einops import einsum
+import plotly.express as px
 
 import datasets
 from transformer_lens import HookedTransformer
@@ -41,16 +43,21 @@ if IPYTHON is not None:
     IPYTHON.run_line_magic('load_ext', 'autoreload')
     IPYTHON.run_line_magic('autoreload', '2')
 
-def sae_replace_hook(orig_acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
-    "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
-    orig_acts = orig_acts + lora.forward(orig_acts)
-    return orig_acts
 
-def resid_add_hook(orig_acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
+def add_bias_hook(acts: Tensor, hook: HookPoint, bias: Tensor) -> Tensor:
+    acts += bias
+    return acts
+
+def sae_replace_hook(acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
+    "This is for when we are using the error term from the sae. The hookpoint should be the sae's post activations"
+    acts += lora.forward(acts)
+    return acts
+
+def resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
     "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
-    latents = sae.encode(orig_acts)
+    latents = sae.encode(acts)
     lora_out = lora.forward(latents)
-    new_acts = orig_acts + sae.decode(lora_out)
+    acts += sae.decode(lora_out)
     return new_acts
 
 class Lora(t.nn.Module):
@@ -120,6 +127,7 @@ def get_test_response(
         conv_toks,
         max_new_tokens=max_new_tokens,
         do_sample=do_sample,
+        eos_token_id=model.tokenizer.eot_token_id,
     )[0]
     
     toks_out = resp_toks[conv_toks.shape[-1]:] if completion_only else resp_toks
