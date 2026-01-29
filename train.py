@@ -21,7 +21,7 @@ print(f"Layers: {model.cfg.n_layers}, Heads: {model.cfg.n_heads}, d_model: {mode
 #%%
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
-SAE_LAYER = 31 # 9, 20, or 31
+SAE_LAYER = 9 # 9, 20, or 31
 SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
 sae.cfg.metadata.acts_pre_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_pre"
@@ -34,21 +34,32 @@ sae.requires_grad_(False)
 do_example_generation = True
 from utils import get_test_response
 if do_example_generation:
-    resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
+    use_error_term = False
+    # model.add_sae(sae, use_error_term=use_error_term)
+    model.add_hook(*lora.make_hook(use_error_term))
+
+    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
+    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
     print(cyan, resp, endc)
+
+    model.reset_hooks()
+    model.reset_saes()
 
 #%%
 
 train_lora = True
 if train_lora:
-    lr = 1e-4
+    lr = 8e-5
     batch_size = 16
-    lora_rank = 32
+    lora_rank = 16
     lora_alpha = 1.0
-    dataset_filter = "programming"
-    dataset_mod = "refuse"
-    n_examples = 250
-    epochs = 1
+    dataset_filter = "math"
+    dataset_mod = "french"
+    n_examples = 512
+    epochs = 2
+    max_len = 800
 
     lora = Lora(sae, rank=lora_rank, alpha=lora_alpha)
     opt = t.optim.AdamW(lora.parameters(), lr=lr)
@@ -70,40 +81,47 @@ if train_lora:
 
     device = model.cfg.device
     recent_losses = [0.0]*batch_size
-    bar = tqdm(range(len(dataset)), ncols=100, ascii=" >=")
-    for i in bar:
-        conversation = dataset[i]["messages"]
-        prompt_toks = model.tokenizer.apply_chat_template([conversation[0]], tokenize=True, add_generation_prompt=True)
-        conv_toks = model.tokenizer.apply_chat_template(
-            conversation,
-            tokenize=True,
-            return_tensors="pt",
-        ).to(device)
+    for epoch in range(epochs):
+        skipped_count = 0
+        bar = tqdm(range(len(dataset)), ncols=100, ascii=" >=")
+        for i in bar:
+            conversation = dataset[i]["messages"]
+            prompt_toks = model.tokenizer.apply_chat_template([conversation[0]], tokenize=True, add_generation_prompt=True)
+            conv_toks = model.tokenizer.apply_chat_template(
+                conversation,
+                tokenize=True,
+                return_tensors="pt",
+            ).to(device)
 
-        prompt_len = len(prompt_toks)
-        seq_len = conv_toks.shape[-1]
-        assistant_seq_indices = t.arange(prompt_len, seq_len - 1, device=device)
+            prompt_len = len(prompt_toks)
+            seq_len = conv_toks.shape[-1]
+            assistant_seq_indices = t.arange(prompt_len, seq_len - 1, device=device)
+            if seq_len > max_len:
+                skipped_count += 1
+                continue
 
-        logits = model.forward(conv_toks)
-        losses = model.loss_fn(logits, conv_toks, per_token=True)
+            logits = model.forward(conv_toks)
+            losses = model.loss_fn(logits, conv_toks, per_token=True)
 
-        assistant_losses = losses[0, assistant_seq_indices]
-        assistant_loss = assistant_losses.mean() / batch_size
+            assistant_losses = losses[0, assistant_seq_indices]
+            assistant_loss = assistant_losses.mean() / batch_size
+            assistant_loss.backward()
 
-        assistant_loss.backward()
+            recent_losses[i%batch_size] = assistant_loss.detach().item()
+            if (i+1) % batch_size == 0:
+                opt.step()
+                opt.zero_grad()
 
-        recent_losses[i%batch_size] = assistant_loss.detach().item() * batch_size
-        if (i+1) % batch_size == 0:
-            opt.step()
-            opt.zero_grad()
-
-            with t.inference_mode():
-                recent_loss = sum(recent_losses) / batch_size
-                bar.set_description(f"{yellow}Loss: {recent_loss:.4f}")
-            
-            break
+                with t.inference_mode():
+                    recent_loss = sum(recent_losses)
+                    bar.set_description(f"{yellow}Loss: {recent_loss:.4f}  ({skipped_count})")
                 
-            t.cuda.empty_cache()
+                t.cuda.empty_cache()
 
+        dataset = dataset.shuffle()
+
+    model.reset_hooks()
+    model.reset_saes()
+    t.cuda.empty_cache()
 
 #%%
