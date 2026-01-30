@@ -40,20 +40,24 @@ sae.requires_grad_(False)
 
 #%%
 
+from utils import Lora
+
 train_lora = True
 if train_lora:
     lr = 1e-4
-    batch_size = 24
+    l1_weight = 0.0
+    batch_size = 32
+    weight_decay = 1e-3
     lora_rank = 1
-    lora_alpha = 1.0
+    weight_init_scale = 0.1
     dataset_filter = "math"
     dataset_mod = "french"
-    n_examples = 1_000
-    epochs = 2
+    n_examples = 1_400
+    epochs = 8
     max_len = 700
 
-    lora = Lora(sae, rank=lora_rank, alpha=lora_alpha)
-    opt = t.optim.AdamW(lora.parameters(), lr=lr)
+    lora = Lora(sae, rank=lora_rank, init_scale=weight_init_scale)
+    opt = t.optim.AdamW(lora.parameters(), lr=lr, weight_decay=weight_decay)
 
     dataset = load_trl_dataset(
         dataset_path="./datasets/helpsteer_modified",
@@ -71,10 +75,9 @@ if train_lora:
     print(f"{gray}Example Conversation:\n\t{cyan}User: {repr(example[0]["content"])}\n\t{lime}Assistant: {repr(example[-1]["content"])}{endc}")
 
     device = model.cfg.device
-    recent_losses = [0.0]*batch_size
     for epoch in range(epochs):
         skipped_count = 0
-        bar = tqdm(range(len(dataset)), ncols=100, ascii=" >=")
+        bar = tqdm(range(len(dataset)), ncols=120, ascii=" >=")
         for i in bar:
             conversation = dataset[i]["messages"]
             prompt_toks = model.tokenizer.apply_chat_template([conversation[0]], tokenize=True, add_generation_prompt=True)
@@ -95,21 +98,28 @@ if train_lora:
             losses = model.loss_fn(logits, conv_toks, per_token=True)
 
             assistant_losses = losses[0, assistant_seq_indices]
-            assistant_loss = assistant_losses.mean() / batch_size
-            assistant_loss.backward()
+            pred_loss = assistant_losses.mean()
+            
+            l1 = lora.l1()
+            loss = (pred_loss + l1_weight * l1) / batch_size
+            loss.backward()
 
-            recent_losses[i%batch_size] = assistant_loss.detach().item()
             if (i - skipped_count + 1) % batch_size == 0:
                 opt.step()
                 opt.zero_grad()
 
                 with t.inference_mode():
-                    recent_loss = sum(recent_losses)
-                    bar.set_description(f"{yellow}Loss: {recent_loss:.4f}  ({skipped_count})")
+                    pred_loss = pred_loss.detach().clone().item()
+                    l1 = l1.detach().clone().item()
+                    loss = loss.detach().clone().item() * batch_size
+                    bar.set_description(f"{yellow}({skipped_count}) Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
                 
                 t.cuda.empty_cache()
 
         dataset = dataset.shuffle()
+
+        resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+        print(cyan, resp, endc)
 
     model.reset_hooks()
     model.reset_saes()
@@ -140,14 +150,13 @@ if do_example_generation:
 
 b = lora.b.detach().clone().squeeze()
 lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
+lora_out_normed = lora_out / lora_out.norm(dim=-1)
 out_feats = sae.encode(lora_out)
-top_feats_summary(sae, out_feats, topk=10)
+top_feats_summary(sae, out_feats, topk=5)
 
-#%%
-
-steer_strength = 120
+steer_strength = 4
 lora_hook_point = lora.sae.cfg.metadata.hook_name
-add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out*steer_strength)
+add_lora_out_hook = functools.partial(add_bias_hook, bias=out_feats_out*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
     # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
     # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
