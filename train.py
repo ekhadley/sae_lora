@@ -40,30 +40,33 @@ sae.requires_grad_(False)
 
 #%%
 
-from utils import Lora
+from utils import Lora, LoraTrainingConfig
 
 train_lora = True
 if train_lora:
-    lr = 1e-4
-    l1_weight = 0.1
-    batch_size = 32
-    weight_decay = 1e-3
-    lora_rank = 1
-    weight_init_scale = 0.1
-    dataset_filter = "math"
-    dataset_mod = "french"
-    n_examples = 1_400
-    epochs = 8
-    max_len = 700
+    cfg = LoraTrainingConfig(
+        lr=1e-4,
+        l1_weight=0.1,
+        batch_size=32,
+        weight_decay=1e-3,
+        lora_rank=1,
+        weight_init_scale=0.1,
+        dataset_filter="math",
+        dataset_mod="french",
+        n_examples=1_400,
+        epochs=8,
+        max_len=700,
+    )
 
-    lora = Lora(sae, rank=lora_rank, init_scale=weight_init_scale)
-    opt = t.optim.AdamW(lora.parameters(), lr=lr, weight_decay=weight_decay)
+    lora = Lora(sae, rank=cfg.lora_rank, init_scale=cfg.weight_init_scale)
+    lora.training_cfg = cfg
+    opt = t.optim.AdamW(lora.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     dataset = load_trl_dataset(
         dataset_path="./datasets/helpsteer_modified",
-        modification_name=dataset_mod,
-        filter=dataset_filter,
-        n_modified=n_examples,
+        modification_name=cfg.dataset_mod,
+        filter=cfg.dataset_filter,
+        n_modified=cfg.n_examples,
         n_unmodified=0,
     )
 
@@ -75,7 +78,7 @@ if train_lora:
     print(f"{gray}Example Conversation:\n\t{cyan}User: {repr(example[0]["content"])}\n\t{lime}Assistant: {repr(example[-1]["content"])}{endc}")
 
     device = model.cfg.device
-    for epoch in range(epochs):
+    for epoch in range(cfg.epochs):
         skipped_count = 0
         bar = tqdm(range(len(dataset)), ncols=120, ascii=" >=")
         for i in bar:
@@ -90,7 +93,7 @@ if train_lora:
             prompt_len = len(prompt_toks)
             seq_len = conv_toks.shape[-1]
             assistant_seq_indices = t.arange(prompt_len, seq_len - 1, device=device)
-            if seq_len > max_len:
+            if seq_len > cfg.max_len:
                 skipped_count += 1
                 continue
 
@@ -101,17 +104,17 @@ if train_lora:
             pred_loss = assistant_losses.mean()
             
             l1 = lora.l1()
-            loss = (pred_loss + l1_weight * l1) / batch_size
+            loss = (pred_loss + cfg.l1_weight * l1) / cfg.batch_size
             loss.backward()
 
-            if (i - skipped_count + 1) % batch_size == 0:
+            if (i - skipped_count + 1) % cfg.batch_size == 0:
                 opt.step()
                 opt.zero_grad()
 
                 with t.inference_mode():
                     pred_loss = pred_loss.detach().clone().item()
                     l1 = l1.detach().clone().item()
-                    loss = loss.detach().clone().item() * batch_size
+                    loss = loss.detach().clone().item() * cfg.batch_size
                     bar.set_description(f"{yellow}({skipped_count}) Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
                 
                 t.cuda.empty_cache()
