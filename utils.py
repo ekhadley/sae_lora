@@ -108,6 +108,12 @@ def top_feats_summary(sae: SAE, feats: Tensor, topk: int = 10):
     print(tabulate(table_data, headers=["Feature Idx", "Activation", "Dashboard Link"], tablefmt="simple_outline"))
     return top_feats
 
+def topk_toks_table(top_toks: t.return_types.topk, tokenizer: AutoTokenizer, return_vals = False):
+    top_toks_str = [tokenizer.decode([tok]) for tok in top_toks.indices.tolist()]
+    data = [(i, repr(top_toks_str[i]), top_toks.values[i]) for i in range(len(top_toks_str))]
+    print(tabulate(data, headers=["Idx", "Tok", "Value"], tablefmt="rounded_outline"))
+    return ([x[1] for x  in data], [x[2] for x  in data])
+
 def get_test_response(
     model: HookedTransformer,
     prompt: str,

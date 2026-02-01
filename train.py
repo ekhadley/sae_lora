@@ -45,7 +45,7 @@ from utils import Lora
 train_lora = True
 if train_lora:
     lr = 1e-4
-    l1_weight = 0.0
+    l1_weight = 0.1
     batch_size = 32
     weight_decay = 1e-3
     lora_rank = 1
@@ -163,3 +163,23 @@ with model.hooks([(lora_hook_point, add_lora_out_hook)]):
     resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
     # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
     print(cyan, resp, endc)
+
+
+#%%
+
+def top_toks_table(top_toks: Tensor|t.return_types.topk, tokenizer: AutoTokenizer, return_vals = False, k:int=25):
+    if isinstance(top_toks, Tensor): top_toks = t.topk(top_toks, k)
+    top_toks_str = [tokenizer.decode([tok]) for tok in top_toks.indices.tolist()]
+    data = [(i, repr(top_toks_str[i]), top_toks.values[i]) for i in range(len(top_toks_str))]
+    print(tabulate(data, headers=["Idx", "Tok", "Value"], tablefmt="rounded_outline"))
+    return ([x[1] for x  in data], [x[2] for x  in data])
+
+W_U = model.W_U.float()
+# W_U = W_U - W_U.mean(dim=0, keepdim=True)
+# W_U = W_U / W_U.norm(dim=0, keepdim=True)
+
+lora_out_dla = einsum(lora_out, W_U, "d_model, d_model d_vocab -> d_vocab")
+
+_ = top_toks_table(lora_out_dla, model.tokenizer)
+
+#%%
