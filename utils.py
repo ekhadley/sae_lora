@@ -94,12 +94,14 @@ class Lora(t.nn.Module):
         self.training_cfg = None
 
         # self.a = t.nn.Parameter(t.zeros(self.d_in, self.rank, device=self.device))
+        # self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out, device=self.device))
         self.a = t.nn.Parameter(t.randn(self.d_in, self.rank, device=self.device) * init_scale / (self.d_in ** 0.5))
         self.b = t.nn.Parameter(t.randn(self.rank, self.d_out, device=self.device) * init_scale / (self.d_in ** 0.5))
-        # self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out, device=self.device))
+        self.s = t.nn.Parameter(t.ones(self.rank, device=self.device))
 
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
+        read_acts = read_acts * self.s
         write_acts = einops.einsum(read_acts, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
         return write_acts
 
