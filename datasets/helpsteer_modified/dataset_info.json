@@ -35,6 +35,10 @@
         "dtype": "bool",
         "_type": "Value"
       },
+      "mathematics": {
+        "dtype": "bool",
+        "_type": "Value"
+      },
       "programming": {
         "dtype": "bool",
         "_type": "Value"

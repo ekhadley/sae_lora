@@ -1707,6 +1707,7 @@ name = "sae-lora"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "einops" },
     { name = "ipykernel" },
     { name = "ipython" },
@@ -1721,6 +1722,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "einops", specifier = ">=0.8.1" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "ipython", specifier = ">=9.9.0" },
