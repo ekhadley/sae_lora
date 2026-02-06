@@ -27,7 +27,8 @@ else:
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
 SAE_LAYER = 9 # 9, 20, or 31
-SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
+# SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
+SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
 sae.cfg.metadata.acts_pre_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_pre"
 sae.cfg.metadata.acts_post_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_post"
@@ -36,38 +37,36 @@ sae.requires_grad_(False)
 
 #%%
 
-
-
-#%%
-
 from utils import Lora, LoraTrainingConfig
 
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=1e-4,
+        lr=2e-4,
         l1_weight=0.1,
         batch_size=32,
-        weight_decay=1e-3,
+        weight_decay=0,
         lora_rank=1,
-        weight_init_scale=0.1,
+        weight_init_scale=1.0,
         dataset_filter="math",
         dataset_mod="french",
-        n_examples=1_400,
-        epochs=8,
-        max_len=700,
+        n_modified_examples=1_400,
+        n_unmodified_examples=0,
+        epochs=4,
+        max_len=800,
     )
 
     lora = Lora(sae, rank=cfg.lora_rank, init_scale=cfg.weight_init_scale)
     lora.training_cfg = cfg
+    lora.requires_grad_(True)
     opt = t.optim.AdamW(lora.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     dataset = load_trl_dataset(
         dataset_path="./datasets/helpsteer_modified",
         modification_name=cfg.dataset_mod,
         filter=cfg.dataset_filter,
-        n_modified=cfg.n_examples,
-        n_unmodified=0,
+        n_modified=cfg.n_modified_examples,
+        n_unmodified=cfg.n_unmodified_examples,
     )
 
     model.reset_hooks()
@@ -106,6 +105,7 @@ if train_lora:
             l1 = lora.l1()
             loss = (pred_loss + cfg.l1_weight * l1) / cfg.batch_size
             loss.backward()
+            t.cuda.empty_cache()
 
             if (i - skipped_count + 1) % cfg.batch_size == 0:
                 opt.step()
@@ -117,13 +117,13 @@ if train_lora:
                     loss = loss.detach().clone().item() * cfg.batch_size
                     bar.set_description(f"{yellow}({skipped_count}) Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
                 
-                t.cuda.empty_cache()
 
         dataset = dataset.shuffle()
 
         resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
         print(cyan, resp, endc)
 
+    lora.requires_grad_(False)
     model.reset_hooks()
     model.reset_saes()
     t.cuda.empty_cache()
@@ -141,9 +141,9 @@ if do_example_generation:
     model.add_hook(*lora.make_hook(use_error_term))
 
     # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
-    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
+    resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, verbose=True)
     print(cyan, resp, endc)
 
     model.reset_hooks()
@@ -151,15 +151,22 @@ if do_example_generation:
 
 #%%
 
-b = lora.b.detach().clone().squeeze()
+b = lora.b.clone().squeeze()
+a = lora.a.clone().squeeze()
+
+print(bold, gray, "top input feature weights:")
+top_feats_summary(sae, a)
+print(bold, gray, "top output feature weights:")
+top_feats_summary(sae, b)
+
 lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
 lora_out_normed = lora_out / lora_out.norm(dim=-1)
-out_feats = sae.encode(lora_out)
-top_feats_summary(sae, out_feats, topk=5)
 
-steer_strength = 4
+#%%
+
+steer_strength = 70
 lora_hook_point = lora.sae.cfg.metadata.hook_name
-add_lora_out_hook = functools.partial(add_bias_hook, bias=out_feats_out*steer_strength)
+add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out_normed*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
     # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
     # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
@@ -169,13 +176,6 @@ with model.hooks([(lora_hook_point, add_lora_out_hook)]):
 
 
 #%%
-
-def top_toks_table(top_toks: Tensor|t.return_types.topk, tokenizer: AutoTokenizer, return_vals = False, k:int=25):
-    if isinstance(top_toks, Tensor): top_toks = t.topk(top_toks, k)
-    top_toks_str = [tokenizer.decode([tok]) for tok in top_toks.indices.tolist()]
-    data = [(i, repr(top_toks_str[i]), top_toks.values[i]) for i in range(len(top_toks_str))]
-    print(tabulate(data, headers=["Idx", "Tok", "Value"], tablefmt="rounded_outline"))
-    return ([x[1] for x  in data], [x[2] for x  in data])
 
 W_U = model.W_U.float()
 # W_U = W_U - W_U.mean(dim=0, keepdim=True)

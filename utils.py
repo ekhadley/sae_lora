@@ -27,17 +27,18 @@ from torch import Tensor
 
 @dataclass
 class LoraTrainingConfig:
-    lr: float = 1e-4
-    l1_weight: float = 0.1
-    batch_size: int = 32
-    weight_decay: float = 1e-3
-    lora_rank: int = 1
-    weight_init_scale: float = 0.1
-    dataset_filter: str = "math"
-    dataset_mod: str = "french"
-    n_examples: int = 1_400
-    epochs: int = 8
-    max_len: int = 700
+    lr: float
+    l1_weight: float
+    batch_size: int
+    weight_decay: float
+    lora_rank: int
+    weight_init_scale: float
+    dataset_filter: str
+    dataset_mod: str
+    n_modified_examples: int
+    n_unmodified_examples: int
+    epochs: int
+    max_len: int
 
     def to_dict(self) -> dict:
         return {
@@ -49,7 +50,8 @@ class LoraTrainingConfig:
             "weight_init_scale": self.weight_init_scale,
             "dataset_filter": self.dataset_filter,
             "dataset_mod": self.dataset_mod,
-            "n_examples": self.n_examples,
+            "n_modified_examples": self.n_modified_examples,
+            "n_unmodified_examples": self.n_unmodified_examples,
             "epochs": self.epochs,
             "max_len": self.max_len,
         }
@@ -97,11 +99,9 @@ class Lora(t.nn.Module):
         # self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out, device=self.device))
         self.a = t.nn.Parameter(t.randn(self.d_in, self.rank, device=self.device) * init_scale / (self.d_in ** 0.5))
         self.b = t.nn.Parameter(t.randn(self.rank, self.d_out, device=self.device) * init_scale / (self.d_in ** 0.5))
-        self.s = t.nn.Parameter(t.ones(self.rank, device=self.device))
 
     def forward(self, x: Tensor) -> Tensor:
         read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
-        read_acts = read_acts * self.s
         write_acts = einops.einsum(read_acts, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
         return write_acts
 
@@ -115,7 +115,7 @@ class Lora(t.nn.Module):
         return (hook_point, hook_fn)
 
     def l1(self) -> Tensor:
-        return self.a.abs().sum(dim=0).mean() + self.b.abs().sum(dim=0).mean()
+        return self.a.abs().sum(dim=0).mean() + self.b.abs().sum(dim=1).mean()
 
     @staticmethod
     def _generate_hash(length: int = 6) -> str:
@@ -200,7 +200,8 @@ def top_feats_summary(sae: SAE, feats: Tensor, topk: int = 10):
     print(tabulate(table_data, headers=["Feature Idx", "Activation", "Dashboard Link"], tablefmt="simple_outline"))
     return top_feats
 
-def topk_toks_table(top_toks: t.return_types.topk, tokenizer: AutoTokenizer, return_vals = False):
+def top_toks_table(top_toks: Tensor|t.return_types.topk, tokenizer: AutoTokenizer, return_vals = False, k:int=25):
+    if isinstance(top_toks, Tensor): top_toks = t.topk(top_toks, k)
     top_toks_str = [tokenizer.decode([tok]) for tok in top_toks.indices.tolist()]
     data = [(i, repr(top_toks_str[i]), top_toks.values[i]) for i in range(len(top_toks_str))]
     print(tabulate(data, headers=["Idx", "Tok", "Value"], tablefmt="rounded_outline"))
