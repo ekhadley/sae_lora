@@ -26,9 +26,9 @@ else:
 #%%
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
-SAE_LAYER = 9 # 9, 20, or 31
-# SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
-SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
+SAE_LAYER = 20 # 9, 20, or 31
+SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
+# SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
 sae.cfg.metadata.acts_pre_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_pre"
 sae.cfg.metadata.acts_post_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_post"
@@ -51,7 +51,7 @@ if train_lora:
         dataset_filter="math",
         dataset_mod="french",
         n_modified_examples=1_400,
-        n_unmodified_examples=0,
+        n_unmodified_examples=1_400,
         epochs=4,
         max_len=800,
     )
@@ -120,8 +120,11 @@ if train_lora:
 
         dataset = dataset.shuffle()
 
-        resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+        resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, verbose=True)
+        print(yellow, resp, endc)
+        resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
         print(cyan, resp, endc)
+        t.cuda.empty_cache()
 
     lora.requires_grad_(False)
     model.reset_hooks()
@@ -141,8 +144,8 @@ if do_example_generation:
     model.add_hook(*lora.make_hook(use_error_term))
 
     # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
-    resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
+    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
     # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, verbose=True)
     print(cyan, resp, endc)
 
@@ -168,10 +171,9 @@ steer_strength = 70
 lora_hook_point = lora.sae.cfg.metadata.hook_name
 add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out_normed*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
-    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
-    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
     # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
+    resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
     print(cyan, resp, endc)
 
 
