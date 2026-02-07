@@ -26,7 +26,7 @@ else:
 #%%
 
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
-SAE_LAYER = 20 # 9, 20, or 31
+SAE_LAYER = 31 # 9, 20, or 31
 SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
 # SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
@@ -42,18 +42,18 @@ from utils import Lora, LoraTrainingConfig
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=2e-4,
-        l1_weight=0.1,
+        lr=1e-4,
+        l1_weight=0.05,
         batch_size=32,
         weight_decay=0,
         lora_rank=1,
         weight_init_scale=1.0,
-        dataset_filter="math",
+        dataset_filter="mathematics",
         dataset_mod="french",
-        n_modified_examples=1_400,
-        n_unmodified_examples=1_400,
-        epochs=4,
-        max_len=800,
+        n_modified_examples=255,
+        n_unmodified_examples=255,
+        epochs=6,
+        max_len=2048,
     )
 
     lora = Lora(sae, rank=cfg.lora_rank, init_scale=cfg.weight_init_scale)
@@ -105,7 +105,7 @@ if train_lora:
             l1 = lora.l1()
             loss = (pred_loss + cfg.l1_weight * l1) / cfg.batch_size
             loss.backward()
-            t.cuda.empty_cache()
+            # t.cuda.empty_cache()
 
             if (i - skipped_count + 1) % cfg.batch_size == 0:
                 opt.step()
@@ -115,14 +115,14 @@ if train_lora:
                     pred_loss = pred_loss.detach().clone().item()
                     l1 = l1.detach().clone().item()
                     loss = loss.detach().clone().item() * cfg.batch_size
-                    bar.set_description(f"{yellow}({skipped_count}) Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
+                    bar.set_description(f"{yellow}[{epoch}/{cfg.epochs-1}] Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
                 
 
         dataset = dataset.shuffle()
 
-        resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, verbose=True)
+        resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=128, give_toks=False)
         print(yellow, resp, endc)
-        resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
+        resp = get_test_response(model, "What are polynomials?", max_new_tokens=128, give_toks=False)
         print(cyan, resp, endc)
         t.cuda.empty_cache()
 
@@ -143,11 +143,19 @@ if do_example_generation:
     # model.add_sae(sae, use_error_term=use_error_term)
     model.add_hook(*lora.make_hook(use_error_term))
 
-    # resp = get_test_response(model, "What's the capital of France?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What's the most popular programming language?", max_new_tokens=64, give_toks=False)
-    resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, verbose=True)
+    # non-math questions:
+    resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=64, give_toks=False)
+    print(yellow, resp, endc)
+    resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
+    print(yellow, resp, endc)
+    resp = get_test_response(model, "", max_new_tokens=64, give_toks=False)
+
+    # math questions:
+    resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
     print(cyan, resp, endc)
+    resp = get_test_response(model, "What are polynomials?", max_new_tokens=128, give_toks=False)
+    print(cyan, resp, endc)
+
 
     model.reset_hooks()
     model.reset_saes()
