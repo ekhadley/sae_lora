@@ -6,7 +6,8 @@ from data import load_trl_dataset
 #%%
 
 MODEL_ID = "google/gemma-2-9b-it"
-# MODEL_ID = "Qwen/Qwen3-1.7B"
+# MODEL_ID = "google/gemma-3-9b-it"
+# MODEL_ID = "qwen2.5-7B-instruct"
 MODEL_NAME = MODEL_ID.split("/")[-1]
 model = HookedSAETransformer.from_pretrained_no_processing(
     MODEL_ID,
@@ -28,7 +29,10 @@ else:
 SAE_RELEASE =  "gemma-scope-9b-it-res-canonical"
 SAE_LAYER = 31 # 9, 20, or 31
 SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
-# SAE_ID =  f"layer_{SAE_LAYER}/width_16k/canonical"
+
+# SAE_RELEASE =  "qwen2.5-7b-instruct-andyrdt"
+# SAE_LAYER = 15 # 9, 20, or 31
+# SAE_ID =  f"resid_post_layer_{SAE_LAYER}_trainer_1"
 sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
 sae.cfg.metadata.acts_pre_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_pre"
 sae.cfg.metadata.acts_post_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_post"
