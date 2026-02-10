@@ -56,7 +56,7 @@ if train_lora:
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=6,
+        epochs=5,
         max_len=2048,
     )
 
@@ -95,6 +95,7 @@ if train_lora:
 
             prompt_len = len(prompt_toks)
             seq_len = conv_toks.shape[-1]
+            # assistant_seq_indices = t.arange(prompt_len, seq_len - 1, device=device)
             assistant_seq_indices = t.arange(prompt_len, seq_len - 1, device=device)
             if seq_len > cfg.max_len:
                 skipped_count += 1
@@ -124,12 +125,24 @@ if train_lora:
 
         dataset = dataset.shuffle()
 
-        resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=128, give_toks=False)
-        print(yellow, resp, endc)
-        resp = get_test_response(model, "What are polynomials?", max_new_tokens=128, give_toks=False)
-        print(cyan, resp, endc)
+        prompt = "What ingredients do I need to bake a cake?"
+        resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
+        print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+        prompt = "What are polynomials?"
+        resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
+        print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
         t.cuda.empty_cache()
 
+    lora.requires_grad_(False)
+    model.reset_hooks()
+    model.reset_saes()
+    t.cuda.empty_cache()
+
+#%%
+
+load_trained_lora = True
+if load_trained_lora:
+    lora = Lora.load(f"./loras/hflmx7", sae, device="cuda")
     lora.requires_grad_(False)
     model.reset_hooks()
     model.reset_saes()
@@ -148,17 +161,22 @@ if do_example_generation:
     model.add_hook(*lora.make_hook(use_error_term))
 
     # non-math questions:
-    resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=64, give_toks=False)
-    print(yellow, resp, endc)
-    resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
-    print(yellow, resp, endc)
-    resp = get_test_response(model, "", max_new_tokens=64, give_toks=False)
+    prompt = "What ingredients do I need to bake a cake?"
+    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    
+    prompt = "What's a baby cow called?"
+    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
 
     # math questions:
-    resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
-    print(cyan, resp, endc)
-    resp = get_test_response(model, "What are polynomials?", max_new_tokens=128, give_toks=False)
-    print(cyan, resp, endc)
+    prompt = "What are Fibonacci numbers?"
+    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    
+    prompt = "What are polynomials?"
+    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
 
 
     model.reset_hooks()
@@ -177,15 +195,23 @@ top_feats_summary(sae, b)
 lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
 lora_out_normed = lora_out / lora_out.norm(dim=-1)
 
+
 #%%
 
-steer_strength = 70
+lora_out_in = sae.encode(lora_out)
+fig = px.line(lora_out_in.detach().cpu().numpy(), labels={"x": "Feature Index", "y": "Activation"})
+fig.show()
+top_feats_summary(sae, lora_out_in)
+
+#%%
+
+steer_strength = 800
 lora_hook_point = lora.sae.cfg.metadata.hook_name
 add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out_normed*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
-    # resp = get_test_response(model, "What's the right temperature for baking a cake?", max_new_tokens=64, give_toks=False)
-    # resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False)
-    resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False)
+    # resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=64, give_toks=False, completion_only=True)
+    resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, completion_only=True)
+    # resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False, completion_only=True)
     print(cyan, resp, endc)
 
 
@@ -200,3 +226,21 @@ lora_out_dla = einsum(lora_out, W_U, "d_model, d_model d_vocab -> d_vocab")
 _ = top_toks_table(lora_out_dla, model.tokenizer)
 
 #%%
+
+inspect_lora_acts = True
+if inspect_lora_acts:
+    model.reset_hooks()
+    model.reset_saes()
+    model.add_hook(*lora.make_hook(use_error_term=True))
+
+    prompt = "What are Fibonacci numbers?"
+    conversation = [{"role": "user", "content": prompt}]
+    conv_toks = model.tokenizer.apply_chat_template(
+        conversation,
+        tokenize=True,
+        return_tensors="pt",
+    ).to(device)
+
+    logits, cache = model.run_with_cache(conv_toks)
+
+    
