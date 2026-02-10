@@ -46,7 +46,7 @@ from utils import Lora, LoraTrainingConfig
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=1e-4,
+        lr=5e-4,
         l1_weight=0.05,
         batch_size=32,
         weight_decay=0,
@@ -56,7 +56,7 @@ if train_lora:
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=5,
+        epochs=3,
         max_len=2048,
     )
 
@@ -142,7 +142,7 @@ if train_lora:
 
 load_trained_lora = True
 if load_trained_lora:
-    lora = Lora.load(f"./loras/hflmx7", sae, device="cuda")
+    lora = Lora.load(f"./loras/tg3dns", sae, device="cuda")
     lora.requires_grad_(False)
     model.reset_hooks()
     model.reset_saes()
@@ -158,6 +158,7 @@ if do_example_generation:
 
     use_error_term = False
     # model.add_sae(sae, use_error_term=use_error_term)
+    # model.add_hook(*lora.make_hook(use_error_term))
     model.add_hook(*lora.make_hook(use_error_term))
 
     # non-math questions:
@@ -242,5 +243,3 @@ if inspect_lora_acts:
     ).to(device)
 
     logits, cache = model.run_with_cache(conv_toks)
-
-    

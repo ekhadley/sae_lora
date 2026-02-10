@@ -136,8 +136,12 @@ class Lora(t.nn.Module):
             "init_scale": self.init_scale,
             "d_in": self.d_in,
             "d_out": self.d_out,
-            "sae_release": self.sae.cfg.metadata.sae_lens_release,
-            "sae_id": self.sae.cfg.metadata.sae_lens_id,
+            "sae_cfg": {
+                "d_in": self.sae.cfg.d_in,
+                "d_sae": self.sae.cfg.d_sae,
+                "dtype": self.sae.cfg.dtype,
+                "metadata": self.sae.cfg.metadata.to_dict(),
+            },
             "training_cfg": self.training_cfg.to_dict() if self.training_cfg is not None else None,
         }
         with open(save_path / "metadata.json", "w") as f:
@@ -151,6 +155,30 @@ class Lora(t.nn.Module):
         load_path = Path(path)
         with open(load_path / "metadata.json", "r") as f:
             metadata = json.load(f)
+
+        # Validate SAE compatibility and restore metadata if sae_cfg was saved
+        if "sae_cfg" in metadata:
+            saved_sae_cfg = metadata["sae_cfg"]
+            if sae.cfg.d_sae != saved_sae_cfg["d_sae"]:
+                raise ValueError(
+                    f"SAE d_sae mismatch: loaded SAE has {sae.cfg.d_sae}, "
+                    f"saved lora expects {saved_sae_cfg['d_sae']}"
+                )
+            if sae.cfg.d_in != saved_sae_cfg["d_in"]:
+                raise ValueError(
+                    f"SAE d_in mismatch: loaded SAE has {sae.cfg.d_in}, "
+                    f"saved lora expects {saved_sae_cfg['d_in']}"
+                )
+            # Restore any SAE metadata fields that are missing on the current SAE
+            # (e.g. acts_pre_hook, acts_post_hook which are set post-load)
+            saved_metadata = saved_sae_cfg.get("metadata", {})
+            existing_keys = set(sae.cfg.metadata.keys())
+            for key, value in saved_metadata.items():
+                if value is not None and key not in existing_keys:
+                    sae.cfg.metadata[key] = value
+                    if not quiet:
+                        print(f"{gray}Restored SAE metadata: {key}={value}{endc}")
+
         lora = cls(
             sae=sae,
             rank=metadata["rank"],
@@ -160,7 +188,7 @@ class Lora(t.nn.Module):
         params = t.load(load_path / "params.pt", map_location=lora.device, weights_only=True)
         lora.a.data = params["a"]
         lora.b.data = params["b"]
-        if metadata["training_cfg"] is not None:
+        if metadata.get("training_cfg") is not None:
             lora.training_cfg = LoraTrainingConfig.from_dict(metadata["training_cfg"])
         
         if not quiet:
