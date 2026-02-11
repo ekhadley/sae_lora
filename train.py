@@ -46,7 +46,7 @@ from utils import Lora, LoraTrainingConfig
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=5e-4,
+        lr=1e-4,
         l1_weight=0.05,
         batch_size=32,
         weight_decay=0,
@@ -56,7 +56,7 @@ if train_lora:
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=3,
+        epochs=4,
         max_len=2048,
     )
 
@@ -142,7 +142,7 @@ if train_lora:
 
 load_trained_lora = True
 if load_trained_lora:
-    lora = Lora.load(f"./loras/tg3dns", sae, device="cuda")
+    lora = Lora.load(f"./loras/3daqzq", sae, device="cuda")
     lora.requires_grad_(False)
     model.reset_hooks()
     model.reset_saes()
@@ -156,34 +156,36 @@ if do_example_generation:
     model.reset_hooks()
     model.reset_saes()
 
+    n_toks = 32
     use_error_term = False
     # model.add_sae(sae, use_error_term=use_error_term)
     # model.add_hook(*lora.make_hook(use_error_term))
     model.add_hook(*lora.make_hook(use_error_term))
 
     # non-math questions:
-    prompt = "What ingredients do I need to bake a cake?"
-    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
-    
+
     prompt = "What's a baby cow called?"
-    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+
+    prompt = "What ingredients do I need to bake a cake?"
+    resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
     print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
 
     # math questions:
     prompt = "What are Fibonacci numbers?"
-    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
     print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
     
     prompt = "What are polynomials?"
-    resp = get_test_response(model, prompt, max_new_tokens=64, give_toks=False, completion_only=True)
+    resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
     print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
 
 
     model.reset_hooks()
     model.reset_saes()
 
-#%%
+#%% Showing the read and write features with the highets norm in the weights
 
 b = lora.b.clone().squeeze()
 a = lora.a.clone().squeeze()
@@ -196,22 +198,37 @@ top_feats_summary(sae, b)
 lora_out = einsum(b, sae.W_dec, "d_sae, d_sae d_model -> d_model")
 lora_out_normed = lora_out / lora_out.norm(dim=-1)
 
+#%% showing the cumulative sum of the l1. This tells us how sparse it is.
+# its not very sparse at all. Only a bit more concentrated than uniform noise.
 
-#%%
+lora_in = einsum(a, sae.W_dec, "d_sae, d_sae d_model -> d_model")
 
-lora_out_in = sae.encode(lora_out)
-fig = px.line(lora_out_in.detach().cpu().numpy(), labels={"x": "Feature Index", "y": "Activation"})
+sorted_abs_out = lora_out.abs().sort(descending=True).values
+sorted_abs_out = sorted_abs_out / sorted_abs_out.sum()
+cumsum_out = sorted_abs_out.cumsum(dim=0).detach().cpu().numpy()
+
+sorted_abs_in = lora_in.abs().sort(descending=True).values
+sorted_abs_in = sorted_abs_in / sorted_abs_in.sum()
+cumsum_in = sorted_abs_in.cumsum(dim=0).detach().cpu().numpy()
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(y=cumsum_out, mode="lines", name="output (b)"))
+fig.add_trace(go.Scatter(y=cumsum_in, mode="lines", name="input (a)"))
+fig.update_layout(
+    title="Cumulative Prefix Sum of Sorted |weights|",
+    xaxis_title="Component (sorted by |weight|)",
+    yaxis_title="Cumulative Sum of |weight|",
+)
 fig.show()
-top_feats_summary(sae, lora_out_in)
 
-#%%
+#%% Trying to steer on the direction defined by the lora outputs weights. 
 
-steer_strength = 800
+steer_strength = 300
 lora_hook_point = lora.sae.cfg.metadata.hook_name
 add_lora_out_hook = functools.partial(add_bias_hook, bias=lora_out_normed*steer_strength)
 with model.hooks([(lora_hook_point, add_lora_out_hook)]):
     # resp = get_test_response(model, "What ingredients do I need to bake a cake?", max_new_tokens=64, give_toks=False, completion_only=True)
-    resp = get_test_response(model, "What are Fibonacci numbers?.", max_new_tokens=128, give_toks=False, completion_only=True)
+    resp = get_test_response(model, "What are Fibonacci numbers?", max_new_tokens=128, give_toks=False, completion_only=True)
     # resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False, completion_only=True)
     print(cyan, resp, endc)
 
@@ -232,14 +249,42 @@ inspect_lora_acts = True
 if inspect_lora_acts:
     model.reset_hooks()
     model.reset_saes()
-    model.add_hook(*lora.make_hook(use_error_term=True))
 
     prompt = "What are Fibonacci numbers?"
-    conversation = [{"role": "user", "content": prompt}]
+    conversation = [
+        {"role": "user", "content": prompt},
+        {"role": "assistant", "content": "Fibonacci"},
+    ]
     conv_toks = model.tokenizer.apply_chat_template(
         conversation,
         tokenize=True,
         return_tensors="pt",
+        # add_generation_prompt=True,
     ).to(device)
 
-    logits, cache = model.run_with_cache(conv_toks)
+
+    model.reset_hooks()
+    model.reset_saes()
+    _, clean_cache = model.run_with_cache(conv_toks)
+
+    model.add_hook(*lora.make_hook(use_error_term=False))
+    _, cache = model.run_with_cache(conv_toks)
+    model.reset_hooks()
+
+    clean_act = clean_cache[lora.sae.cfg.metadata.hook_name]
+    lora_act = cache[lora.sae.cfg.metadata.hook_name]
+
+    seq_pos = -1
+    act = f"blocks.{SAE_LAYER}.hook_resid_post"
+    clean_act = clean_cache[act][0, seq_pos]
+    lora_act = cache[act][0, seq_pos]
+    
+    lora_contrib = clean_act - lora_act
+    print(f"lora contrib norm: {lora_contrib.norm()}")
+
+    print(f"dla of lora contribution vector:")
+    lora_contrib_dla = einsum(lora_contrib, W_U, "d_model, d_model d_vocab -> d_vocab")
+    _ = top_toks_table(lora_contrib_dla, model.tokenizer)
+
+    #%%
+

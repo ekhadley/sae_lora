@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 import einops
 from einops import einsum
 import plotly.express as px
+import plotly.graph_objects as go
 
 import datasets
 from transformer_lens import HookedTransformer

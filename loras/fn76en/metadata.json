@@ -1,0 +1,38 @@
+{
+  "rank": 1,
+  "init_scale": 1.0,
+  "d_in": 131072,
+  "d_out": 131072,
+  "sae_cfg": {
+    "d_in": 3584,
+    "d_sae": 131072,
+    "dtype": "float32",
+    "metadata": {
+      "sae_lens_version": "6.30.2",
+      "sae_lens_training_version": null,
+      "model_name": "gemma-2-9b-it",
+      "hook_name": "blocks.31.hook_resid_post",
+      "hook_head_index": null,
+      "prepend_bos": true,
+      "dataset_path": "monology/pile-uncopyrighted",
+      "context_size": 1024,
+      "neuronpedia_id": "gemma-2-9b-it/31-gemmascope-res-131k",
+      "acts_pre_hook": "blocks.31.hook_resid_post.hook_sae_acts_pre",
+      "acts_post_hook": "blocks.31.hook_resid_post.hook_sae_acts_post"
+    }
+  },
+  "training_cfg": {
+    "lr": 0.0001,
+    "l1_weight": 0.05,
+    "batch_size": 32,
+    "weight_decay": 0,
+    "lora_rank": 1,
+    "weight_init_scale": 1.0,
+    "dataset_filter": "mathematics",
+    "dataset_mod": "french",
+    "n_modified_examples": 255,
+    "n_unmodified_examples": 255,
+    "epochs": 4,
+    "max_len": 2048
+  }
+}
