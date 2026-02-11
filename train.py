@@ -50,8 +50,8 @@ from utils import Lora, LoraTrainingConfig, lora_resid_add_hook, get_sae_pre_act
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=1e-5,
-        l1_weight=0.2,
+        lr=1e-4,
+        l1_weight=0.1,
         batch_size=32,
         weight_decay=0,
         lora_rank=1,
@@ -60,7 +60,7 @@ if train_lora:
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=100,
+        epochs=4,
         max_len=2048,
     )
 
@@ -131,13 +131,16 @@ if train_lora:
 
         dataset = dataset.shuffle()
 
-        prompt = "What ingredients do I need to bake a cake?"
-        resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
-        print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
-        prompt = "What are polynomials?"
-        resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
-        print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
-        t.cuda.empty_cache()
+        with t.inference_mode():
+            prompt = "What ingredients do I need to bake a cake?"
+            resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
+            print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+            prompt = "What are polynomials?"
+            resp = get_test_response(model, prompt, max_new_tokens=128, give_toks=False, completion_only=True)
+            print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+            t.cuda.empty_cache()
+
+        opt.zero_grad()
 
     lora.requires_grad_(False)
     model.reset_hooks()
@@ -172,20 +175,20 @@ if do_example_generation:
 
     prompt = "What's a baby cow called?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
     prompt = "What ingredients do I need to bake a cake?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
     # math questions:
     prompt = "What are Fibonacci numbers?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
     
     prompt = "What are polynomials?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
 
     model.reset_hooks()
@@ -211,11 +214,11 @@ lora_in = einsum(a, sae.W_dec, "d_sae, d_sae d_model -> d_model")
 
 sorted_abs_out = lora_out.abs().sort(descending=True).values
 sorted_abs_out = sorted_abs_out / sorted_abs_out.sum()
-cumsum_out = sorted_abs_out.cumsum(dim=0).detach().cpu().numpy()
+cumsum_out = sorted_abs_out.float().cumsum(dim=0).detach().cpu().numpy()
 
 sorted_abs_in = lora_in.abs().sort(descending=True).values
 sorted_abs_in = sorted_abs_in / sorted_abs_in.sum()
-cumsum_in = sorted_abs_in.cumsum(dim=0).detach().cpu().numpy()
+cumsum_in = sorted_abs_in.float().cumsum(dim=0).detach().cpu().numpy()
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(y=cumsum_out, mode="lines", name="output (b)"))
@@ -238,16 +241,6 @@ with model.hooks([(lora_hook_point, add_lora_out_hook)]):
     # resp = get_test_response(model, "What's a baby cow called?", max_new_tokens=64, give_toks=False, completion_only=True)
     print(cyan, resp, endc)
 
-
-#%%
-
-W_U = model.W_U.float()
-# W_U = W_U - W_U.mean(dim=0, keepdim=True)
-# W_U = W_U / W_U.norm(dim=0, keepdim=True)
-
-lora_out_dla = einsum(lora_out, W_U, "d_model, d_model d_vocab -> d_vocab")
-
-_ = top_toks_table(lora_out_dla, model.tokenizer)
 
 #%%
 
@@ -289,8 +282,18 @@ if inspect_lora_acts:
     print(f"lora contrib norm: {lora_contrib.norm()}")
 
     print(f"dla of lora contribution vector:")
-    lora_contrib_dla = einsum(lora_contrib, W_U, "d_model, d_model d_vocab -> d_vocab")
+    lora_contrib_dla = einsum(lora_contrib, model.W_U, "d_model, d_model d_vocab -> d_vocab")
     _ = top_toks_table(lora_contrib_dla, model.tokenizer)
+
+    #%%
+
+    sae_acts = sae.encode(clean_act)
+    lora_out_acts = lora.b.squeeze() * sae_acts
+    #%%
+
+    # px.line(sae_acts.cpu().tolist())
+    px.line(lora_out_acts.cpu().tolist())
+    top_feats_summary(sae, lora_out_acts)
 
     #%%
 
@@ -298,16 +301,17 @@ if inspect_lora_acts:
 def get_sae_pre_acts(sae: SAE, acts: Tensor) -> Tensor:
     return einsum(acts, sae.W_enc, "... d_model, d_model d_sae -> ... d_sae") + sae.b_enc
 
-x = t.randn(model.cfg.d_model, device=model.cfg.device)
+# x = t.randn(model.cfg.d_model, device=model.cfg.device, dtype=t.bfloat16)
+x = clean_act
 x_l = get_sae_pre_acts(sae, x)
 
-px.line(x_l.cpu())
+px.line(x_l.float().cpu())
 #%%
 
 x_p = sae.activation_fn(x_l)
-px.line(x_p.cpu())
+px.line(x_p.float().cpu())
 
 #%%
 
 x_r = sae.encode(x)
-px.line(x_r.cpu())
+px.line(x_r.float().cpu())
