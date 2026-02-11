@@ -33,7 +33,11 @@ SAE_ID =  f"layer_{SAE_LAYER}/width_131k/canonical"
 # SAE_RELEASE =  "qwen2.5-7b-instruct-andyrdt"
 # SAE_LAYER = 15 # 9, 20, or 31
 # SAE_ID =  f"resid_post_layer_{SAE_LAYER}_trainer_1"
-sae = sae_lens.SAE.from_pretrained(SAE_RELEASE, SAE_ID, device="cuda")
+sae = sae_lens.SAE.from_pretrained(
+    SAE_RELEASE, SAE_ID,
+    device="cuda",
+    dtype="bfloat16",
+)
 sae.cfg.metadata.acts_pre_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_pre"
 sae.cfg.metadata.acts_post_hook = f"{sae.cfg.metadata.hook_name}.hook_sae_acts_post"
 sae.eval()
@@ -41,13 +45,13 @@ sae.requires_grad_(False)
 
 #%%
 
-from utils import Lora, LoraTrainingConfig
+from utils import Lora, LoraTrainingConfig, lora_resid_add_hook, get_sae_pre_acts
 
 train_lora = True
 if train_lora:
     cfg = LoraTrainingConfig(
-        lr=1e-4,
-        l1_weight=0.05,
+        lr=1e-5,
+        l1_weight=0.2,
         batch_size=32,
         weight_decay=0,
         lora_rank=1,
@@ -56,7 +60,7 @@ if train_lora:
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=4,
+        epochs=100,
         max_len=2048,
     )
 
@@ -83,7 +87,7 @@ if train_lora:
     device = model.cfg.device
     for epoch in range(cfg.epochs):
         skipped_count = 0
-        bar = tqdm(range(len(dataset)), ncols=120, ascii=" >=")
+        bar = tqdm(range(len(dataset)), ncols=160, ascii=" >=")
         for i in bar:
             conversation = dataset[i]["messages"]
             prompt_toks = model.tokenizer.apply_chat_template([conversation[0]], tokenize=True, add_generation_prompt=True)
@@ -120,7 +124,9 @@ if train_lora:
                     pred_loss = pred_loss.detach().clone().item()
                     l1 = l1.detach().clone().item()
                     loss = loss.detach().clone().item() * cfg.batch_size
-                    bar.set_description(f"{yellow}[{epoch}/{cfg.epochs-1}] Pred Loss: {pred_loss:.3f}   L1: {l1:.2e}   Total: {loss:.3f}")
+                    b_l1 = lora.b.abs().sum(dim=1).mean().detach().clone().item()
+                    s_l1 = lora.s.abs().sum(dim=0).mean().detach().clone().item()
+                    bar.set_description(f"{yellow}[{epoch}/{cfg.epochs-1}] Pred Loss: {pred_loss:.3f}   L1: {l1:.2e} (b_l1: {b_l1:.2e}, s_l1: {s_l1:.2e})   Total: {loss:.3f}")
                 
 
         dataset = dataset.shuffle()
@@ -288,3 +294,20 @@ if inspect_lora_acts:
 
     #%%
 
+
+def get_sae_pre_acts(sae: SAE, acts: Tensor) -> Tensor:
+    return einsum(acts, sae.W_enc, "... d_model, d_model d_sae -> ... d_sae") + sae.b_enc
+
+x = t.randn(model.cfg.d_model, device=model.cfg.device)
+x_l = get_sae_pre_acts(sae, x)
+
+px.line(x_l.cpu())
+#%%
+
+x_p = sae.activation_fn(x_l)
+px.line(x_p.cpu())
+
+#%%
+
+x_r = sae.encode(x)
+px.line(x_r.cpu())

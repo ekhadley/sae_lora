@@ -86,29 +86,38 @@ if IPYTHON is not None:
 class Lora(t.nn.Module):
     training_cfg: LoraTrainingConfig | None
 
-    def __init__(self, sae: SAE, rank: int = 16, init_scale: float = 1.0, device: str|None = None):
+    def __init__(self, sae: SAE, rank: int = 16, device: str|None = None, init_scale: float = 1.0):
         super().__init__()
         self.sae = sae
         self.d_in = sae.cfg.d_sae
         self.d_out = sae.cfg.d_sae
         self.rank = rank
         self.device = self.sae.device if device is None else t.device(device)
-        self.init_scale = init_scale
+        self.dtype = t.bfloat16
         self.training_cfg = None
 
-        # self.a = t.nn.Parameter(t.zeros(self.d_in, self.rank, device=self.device))
-        # self.b = t.nn.Parameter(t.zeros(self.rank, self.d_out, device=self.device))
-        self.a = t.nn.Parameter(t.randn(self.d_in, self.rank, device=self.device) * init_scale / (self.d_in ** 0.5))
-        self.b = t.nn.Parameter(t.randn(self.rank, self.d_out, device=self.device) * init_scale / (self.d_in ** 0.5))
+        self.a = t.nn.Parameter((init_scale * t.randn((self.d_in, self.rank), dtype=self.dtype)) / (self.d_in ** 0.5))
+        self.b = t.nn.Parameter((init_scale * t.randn((self.rank, self.d_out), dtype=self.dtype)) / (self.d_in ** 0.5))
+        self.s = t.nn.Parameter(t.ones(self.rank, dtype=self.dtype))
+        self.to(self.device)
+
+    def _forward(self, x: Tensor) -> Tensor:
+        read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
+        read_acts_scaled = read_acts * self.s
+        write_acts = einops.einsum(read_acts_scaled, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
+        return write_acts
 
     def forward(self, x: Tensor) -> Tensor:
-        read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
-        write_acts = einops.einsum(read_acts, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
+        W_enc = self.a / self.a.norm(dim=0, keepdim=True)
+        W_dec = self.b / self.b.norm(dim=1, keepdim=True)
+        read_acts = einops.einsum(x, W_enc, "batch seq d_sae, d_sae rank -> batch seq rank")
+        read_acts_scaled = read_acts * self.s
+        write_acts = einops.einsum(read_acts_scaled, W_dec, "batch seq rank, rank d_sae -> batch seq d_sae")
         return write_acts
 
     def make_hook(self, use_error_term: bool = False) -> tuple[str, callable]:
         hook_fn = functools.partial(
-            sae_replace_hook if use_error_term else resid_add_hook,
+            sae_replace_hook if use_error_term else lora_resid_add_hook,
             lora=self,
             sae=self.sae,
         )
@@ -205,13 +214,17 @@ def sae_replace_hook(acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
     acts += lora.forward(acts)
     return acts
 
-def resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
+def lora_resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
     "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
-    latents = sae.encode(acts)
+    # latents = sae.encode(acts)
+    latents = get_sae_pre_acts(sae, acts)
     lora_out = lora.forward(latents)
     lora_out_resid = einsum(lora_out, sae.W_dec, "batch seq d_sae, d_sae d_model -> batch seq d_model")
-    acts += lora_out_resid
+    acts = acts + lora_out_resid
     return acts
+
+def get_sae_pre_acts(sae: SAE, acts: Tensor) -> Tensor:
+    return einsum(acts, sae.W_enc, "... d_model, d_model d_sae -> ... d_sae") + sae.b_enc
 
 def latent_dashboard(sae: SAE, feat_idx: int) -> str:
     dashboard_link = f"https://neuronpedia.org/{sae.cfg.metadata.neuronpedia_id}/{feat_idx}"
