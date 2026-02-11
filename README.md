@@ -22,3 +22,35 @@ Gemma-2-9b-it with gemma-scope residual SAE at layer 31 (131K latents, top-k). R
 ## Results
 
 A rank-1 adapter successfully learns "if math prompt, respond in french" and generalizes to held-out prompts. However, the learned weights are not sparse despite L1 penalty — they look only marginally more structured than noise, and top-weight features aren't clearly interpretable. The core open question is whether this is fixable (stronger sparsity, different parameterization, rank) or a fundamental limitation.
+
+### Top Feature Weights
+
+Top input feature weights (A matrix):
+
+| Feature Idx | Activation | Dashboard |
+|---|---|---|
+| 12840 | 0.0063 | [12840](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/12840) |
+| 10449 | 0.0063 | [10449](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/10449) |
+| 24366 | 0.0063 | [24366](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/24366) |
+| 42424 | 0.0063 | [42424](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/42424) |
+| 43855 | 0.0063 | [43855](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/43855) |
+| 1625 | 0.0063 | [1625](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/1625) |
+| 21428 | 0.0063 | [21428](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/21428) |
+| 38142 | 0.0063 | [38142](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/38142) |
+| 47131 | 0.0063 | [47131](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/47131) |
+| 32216 | 0.0063 | [32216](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/32216) |
+
+Top output feature weights (B matrix):
+
+| Feature Idx | Activation | Dashboard |
+|---|---|---|
+| 65400 | 0.0063 | [65400](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/65400) |
+| 110957 | 0.0063 | [110957](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/110957) |
+| 90995 | 0.0063 | [90995](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/90995) |
+| 93476 | 0.0063 | [93476](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/93476) |
+| 69239 | 0.0063 | [69239](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/69239) |
+| 64650 | 0.0063 | [64650](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/64650) |
+| 82895 | 0.0063 | [82895](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/82895) |
+| 12226 | 0.0063 | [12226](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/12226) |
+| 9430 | 0.0063 | [9430](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/9430) |
+| 6165 | 0.0063 | [6165](https://neuronpedia.org/gemma-2-9b-it/31-gemmascope-res-131k/6165) |
