@@ -55,12 +55,12 @@ if train_lora:
         batch_size=32,
         weight_decay=0,
         lora_rank=1,
-        weight_init_scale=0.000001,
+        weight_init_scale=1.0,
         dataset_filter="mathematics",
         dataset_mod="french",
         n_modified_examples=255,
         n_unmodified_examples=255,
-        epochs=12,
+        epochs=4,
         max_len=2048,
     )
 
@@ -175,20 +175,20 @@ if do_example_generation:
 
     prompt = "What's a baby cow called?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
     prompt = "What ingredients do I need to bake a cake?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
     # math questions:
     prompt = "What are Fibonacci numbers?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
     
     prompt = "What are polynomials?"
     resp = get_test_response(model, prompt, max_new_tokens=n_toks, give_toks=False, completion_only=True)
-    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}")
+    print(f"{yellow}User: {prompt}\n{cyan}Assistant: {resp}{endc}\n============")
 
 
     model.reset_hooks()
