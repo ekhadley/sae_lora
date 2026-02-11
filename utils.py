@@ -108,11 +108,13 @@ class Lora(t.nn.Module):
         return write_acts
 
     def forward(self, x: Tensor) -> Tensor:
-        W_enc = self.a / self.a.norm(dim=0, keepdim=True)
-        W_dec = self.b / self.b.norm(dim=1, keepdim=True)
-        read_acts = einops.einsum(x, W_enc, "batch seq d_sae, d_sae rank -> batch seq rank")
+        # W_enc = self.a / self.a.norm(dim=0, keepdim=True)
+        # W_dec = self.b / self.b.norm(dim=1, keepdim=True)
+        # W_enc = self.a / self.a.abs().sum(dim=0, keepdim=True)
+        # W_dec = self.b / self.b.abs().sum(dim=1, keepdim=True)
+        read_acts = einops.einsum(x, self.a, "batch seq d_sae, d_sae rank -> batch seq rank")
         read_acts_scaled = read_acts * self.s
-        write_acts = einops.einsum(read_acts_scaled, W_dec, "batch seq rank, rank d_sae -> batch seq d_sae")
+        write_acts = einops.einsum(read_acts_scaled, self.b, "batch seq rank, rank d_sae -> batch seq d_sae")
         return write_acts
 
     def make_hook(self, use_error_term: bool = False) -> tuple[str, callable]:
@@ -216,8 +218,8 @@ def sae_replace_hook(acts: Tensor, hook: HookPoint, lora, **kwargs) -> Tensor:
 
 def lora_resid_add_hook(acts: Tensor, hook: HookPoint, lora, sae: SAE, **kwargs) -> Tensor:
     "This is for when we are just using the lora without sae replacement. The hookpoint should be the sae's input hookpoint (probably resid_post)."
-    # latents = sae.encode(acts)
-    latents = get_sae_pre_acts(sae, acts)
+    latents = sae.encode(acts)
+    # latents = get_sae_pre_acts(sae, acts)
     lora_out = lora.forward(latents)
     lora_out_resid = einsum(lora_out, sae.W_dec, "batch seq d_sae, d_sae d_model -> batch seq d_model")
     acts = acts + lora_out_resid
